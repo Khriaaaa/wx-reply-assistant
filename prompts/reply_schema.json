@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "WeChatReplySuggestions",
+  "type": "object",
+  "required": ["strategy", "intent", "need", "tension", "candidates"],
+  "properties": {
+    "strategy": {"type": "string", "minLength": 1},
+    "intent": {"type": "string", "minLength": 1},
+    "need": {"type": "string", "minLength": 1},
+    "tension": {"type": "integer", "minimum": 1, "maximum": 9},
+    "candidates": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "required": ["text", "style", "score"],
+        "properties": {
+          "text": {"type": "string", "minLength": 1, "pattern": "^[^\\r\\n]+$"},
+          "style": {"type": "string", "minLength": 1},
+          "score": {"type": "number", "minimum": 0, "maximum": 100}
+        }
+      }
+    }
+  }
+}

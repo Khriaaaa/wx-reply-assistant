@@ -1,0 +1,14 @@
+# 运行期数据：聊天记录、建议、截图、日志、面板密码/密钥 —— 一律不进仓库
+store/*
+!store/.gitkeep
+
+# 本机环境：虚机 SSH / UUID / 口令
+config.local.yaml
+
+# 采集器临时工作目录
+collector/work/
+
+# Python
+__pycache__/
+*.pyc
+.venv/

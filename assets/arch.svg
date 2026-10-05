@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="620" viewBox="0 0 1040 620">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#A99E8D"/>
+    </marker>
+    <style>
+      .eb { font-family:"Noto Sans CJK SC",sans-serif; font-size:12px; letter-spacing:3.2px; fill:#B5603F; }
+      .ttl { font-family:"Noto Serif CJK SC",serif; font-size:34px; fill:#262522; }
+      .sub { font-family:"Noto Sans CJK SC",sans-serif; font-size:14px; fill:#6E6A61; }
+      .n { font-family:"Noto Sans CJK SC",sans-serif; font-size:12px; fill:#A79E90; letter-spacing:1.5px; }
+      .h { font-family:"Noto Serif CJK SC",serif; font-size:20px; fill:#262522; }
+      .d { font-family:"Noto Sans CJK SC",sans-serif; font-size:12.5px; fill:#6E6A61; }
+      .m { font-family:"DejaVu Sans Mono",monospace; font-size:11px; fill:#9A9184; }
+      .note { font-family:"Noto Sans CJK SC",sans-serif; font-size:13px; fill:#6E6A61; }
+    </style>
+  </defs>
+
+  <rect width="1040" height="620" fill="#FAF8F3"/>
+
+  <text class="eb" x="60" y="72">ARCHITECTURE</text>
+  <text class="ttl" x="60" y="118">一条只读的链路</text>
+  <text class="sub" x="60" y="148">从微信窗口里的气泡，到你手机上能直接复制的一句话</text>
+
+  <!-- 阶段卡片 -->
+  <g>
+    <rect x="60" y="200" width="210" height="212" rx="14" fill="#FFFFFF" stroke="#DFD3BC"/>
+    <text class="n" x="84" y="234">01</text>
+    <text class="h" x="84" y="268">微信窗口</text>
+    <text class="d" x="84" y="296">Win10 虚机里</text>
+    <text class="d" x="84" y="316">开着的那个微信</text>
+    <text class="m" x="84" y="352">UIA 只读界面树</text>
+    <text class="d" x="84" y="382">不点、不发、不接管</text>
+  </g>
+
+  <line x1="278" y1="306" x2="312" y2="306" stroke="#A99E8D" stroke-width="1.6" marker-end="url(#ar)"/>
+
+  <g>
+    <rect x="320" y="200" width="210" height="212" rx="14" fill="#FFFFFF" stroke="#DFD3BC"/>
+    <text class="n" x="344" y="234">02</text>
+    <text class="h" x="344" y="268">采集器</text>
+    <text class="d" x="344" y="296">识别每条消息</text>
+    <text class="d" x="344" y="316">是谁说的</text>
+    <text class="m" x="344" y="352">store/messages.jsonl</text>
+    <text class="d" x="344" y="382">指纹去重，只追加</text>
+  </g>
+
+  <line x1="538" y1="306" x2="572" y2="306" stroke="#A99E8D" stroke-width="1.6" marker-end="url(#ar)"/>
+
+  <g>
+    <rect x="580" y="200" width="210" height="212" rx="14" fill="#FFFFFF" stroke="#DFD3BC"/>
+    <text class="n" x="604" y="234">03</text>
+    <text class="h" x="604" y="268">编排</text>
+    <text class="d" x="604" y="296">对方来了新消息</text>
+    <text class="d" x="604" y="316">才生成候选</text>
+    <text class="m" x="604" y="352">store/suggestions.jsonl</text>
+    <text class="d" x="604" y="382">3 条，不同策略</text>
+  </g>
+
+  <line x1="798" y1="306" x2="832" y2="306" stroke="#A99E8D" stroke-width="1.6" marker-end="url(#ar)"/>
+
+  <g>
+    <rect x="840" y="200" width="140" height="212" rx="14" fill="#FFF9F2" stroke="#E0C9A8"/>
+    <text class="n" x="864" y="234">04</text>
+    <text class="h" x="864" y="268">面板</text>
+    <text class="d" x="864" y="296">手机上看</text>
+    <text class="d" x="864" y="316">复制就走</text>
+    <text class="d" x="864" y="352">只给建议</text>
+    <text class="d" x="864" y="372">不替你发</text>
+  </g>
+
+  <!-- 只读边界 -->
+  <g>
+    <rect x="60" y="452" width="920" height="86" rx="12" fill="#F5F1E9" stroke="#E3D9C6" stroke-dasharray="5 5"/>
+    <text class="note" x="88" y="486">全程只读：不发送、不点击、不模拟键盘。</text>
+    <text class="note" x="88" y="512">填入通道默认关闭，建议由你自己判断要不要用。</text>
+    <circle cx="946" cy="495" r="7" fill="none" stroke="#B5603F" stroke-width="1.6"/>
+    <line x1="941" y1="500" x2="951" y2="490" stroke="#B5603F" stroke-width="1.6"/>
+  </g>
+</svg>

@@ -1,0 +1,211 @@
+<!doctype html>
+<!-- 面板 v2：由 web/server.py 提供（python3 web/server.py --port 8801），登录后访问 /。
+     卡片版式对齐参考实现：对方最近说 + 三行判断 + 带百分比的候选。
+     卡片结构对齐参考实现：当前会话条 → ✓ 提示 → 对方最近说 → 对话参考（紧张度 + 三行判断）
+     → 候选卡片 → 页脚免责。
+     面板自己每 30s 自检一次新聊天记录（后端后台线程，见 server.py checker_loop）：
+     采集没跑就拉起、有新消息就自动重新生成，浏览器每 5s 刷一次 /api/state 拿结果。
+     “复制”只写本机剪贴板；“填入”走 /api/fill 把该句填进 NAS 虚机里微信的输入框
+     （只填，不按回车、不发送）。填入默认关闭（只给建议），由后端 fill_enabled 控制。 -->
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>回复助手</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:#eef0f3;color:#1f2329}
+.wrap{max-width:760px;margin:0 auto;padding:12px}
+header{display:flex;align-items:center;gap:8px;position:sticky;top:0;background:#eef0f3;padding:8px 0;z-index:1}
+.dot{width:10px;height:10px;border-radius:50%;background:#c2c6cc}.dot.on{background:#07c160}
+#sess{flex:1;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+button{font-size:13px;padding:5px 10px;border:1px solid #d0d4da;background:#fff;border-radius:6px;cursor:pointer;color:#333}
+button.pri{background:#07c160;color:#fff;border-color:#07c160}button:disabled{opacity:.5}
+button.fill{background:#1a7fdc;color:#fff;border-color:#1a7fdc}
+
+/* ---- 建议卡片 ---- */
+.jv{background:#fff;border:1px solid #e6e9ee;border-radius:12px;box-shadow:0 2px 10px #0b12201a;overflow:hidden}
+.jvh{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid #f0f2f5}
+.jvh b{font-size:14px}
+.jvh .upd{margin-left:auto;font-size:11px;color:#9aa0a6}
+.ok{padding:8px 14px;font-size:12px;color:#0a8f4c;background:#f1fbf5;border-bottom:1px solid #e8f6ee}
+.say{padding:10px 14px 2px;font-size:13px;color:#5b6168}
+.quote{margin:6px 14px 0;padding:8px 10px;background:#f6f7f9;border-left:3px solid #07c160;border-radius:0 6px 6px 0;font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+.kv{margin:10px 14px 0;font-size:12.5px;line-height:1.7;color:#3d434a}
+.kv div{display:flex;gap:8px}
+.kv dt{flex:0 0 58px;color:#8b9198}
+.kv dd{margin:0;flex:1;word-break:break-word}
+.cands{padding:12px 14px 14px;display:flex;flex-direction:column;gap:10px}
+.cand{border:1px solid #e9ecf1;border-radius:9px;padding:10px 12px;background:#fcfcfd}
+.cand.top{border-color:#07c160;background:#f7fdf9}
+.ch{display:flex;align-items:center;gap:8px;font-size:12px;color:#6b7076;margin-bottom:6px}
+.lb{font-weight:600;color:#2b3036}
+.cand.top .lb{color:#07934a}
+.pc{margin-left:auto;font-variant-numeric:tabular-nums;color:#8b9198}
+.cand.top .pc{color:#07934a;font-weight:600}
+.ct{font-size:14.5px;line-height:1.6;word-break:break-word;white-space:pre-wrap}
+.cf{display:flex;align-items:center;gap:8px;margin-top:8px}
+.tag{background:#e8f5ee;color:#058a43;border-radius:4px;padding:1px 6px;font-size:11px;margin-right:auto}
+/* ---- 当前会话条 / 对话参考 / 页脚 ---- */
+.strip{display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid #f0f2f5;background:#fafbfc}
+.av{width:26px;height:26px;border-radius:50%;background:#07c160;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex:0 0 26px}
+.strip .nm{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip{font-size:11px;padding:1px 6px;border-radius:4px;background:#eef1f4;color:#6b7076;white-space:nowrap}
+.chip.on{background:#e8f5ee;color:#058a43}
+.ttl{margin:12px 14px 0;font-size:12px;color:#8b9198;font-weight:600}
+.tv{font-variant-numeric:tabular-nums;color:#3d434a;flex:0 0 26px}
+.tn{display:flex;align-items:center;gap:8px;flex:1}
+.bar{flex:1;height:6px;max-width:140px;border-radius:3px;background:#eceff3;overflow:hidden}
+.bar i{display:block;height:100%}
+.disc{padding:10px 14px;font-size:11px;color:#9aa0a6;border-top:1px solid #f0f2f5;text-align:center}
+.empty{background:#fff;border:1px dashed #d6dae0;border-radius:10px;text-align:center;color:#888;padding:24px;font-size:13px}
+h3{margin:16px 0 6px;font-size:13px;color:#666;font-weight:600}
+#msgs{display:flex;flex-direction:column;gap:8px}
+.m{max-width:80%;padding:7px 10px;border-radius:8px;word-break:break-word;white-space:pre-wrap;font-size:13.5px;line-height:1.5}
+.m small{display:block;font-size:11px;color:#8c9198;margin-bottom:2px}
+.me{align-self:flex-end;background:#95ec69}.them{align-self:flex-start;background:#fff}
+.unknown{align-self:center;background:#dfe2e6}
+.hint{font-size:12px;color:#777;margin:8px 0}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#333;color:#fff;padding:8px 14px;border-radius:6px;display:none;max-width:90%;font-size:13px}
+</style></head><body><div class="wrap">
+<header><span id="dot" class="dot"></span><span id="sess">—</span>
+<button id="regen" class="pri">重新生成</button></header>
+<div id="panel"></div>
+<h3>聊天记录</h3>
+<div id="msgs"></div>
+</div><div id="toast"></div>
+<script>
+const $=id=>document.getElementById(id);
+let session=null,busy=false,lastTs=null;
+function toast(t){const e=$('toast');e.textContent=t;e.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>e.style.display='none',3500)}
+function el(tag,cls,txt){const e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e}
+function cut(s,n){s=(s||'').replace(/\s+/g,' ').trim();return s.length>n?s.slice(0,n)+'…':s}
+async function api(path,opt){
+  const r=await fetch(path,Object.assign({credentials:'same-origin'},opt));
+  if(r.status===401){location.href='/login';throw new Error('未登录')}
+  let d={};try{d=await r.json()}catch(e){}
+  if(!r.ok)throw new Error(d.error||('HTTP '+r.status));
+  return d;
+}
+async function copy(text){
+  try{
+    if(!navigator.clipboard)throw new Error('当前环境不支持剪贴板（需 HTTPS 或 localhost）');
+    await navigator.clipboard.writeText(text);toast('已复制');
+  }catch(e){toast('复制失败：'+e.message+'。请长按文字手动复制')}
+}
+async function fillTo(i,btn){
+  if(busy)return;
+  busy=true;const old=btn.textContent;btn.disabled=true;btn.textContent='填入中…';
+  try{
+    const r=await api('/api/fill',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({index:i})});
+    btn.textContent='已填入';toast('已填进虚机微信输入框（'+r.seconds+'s，没发送）');
+  }catch(e){
+    btn.textContent='失败';toast('填入失败：'+e.message);
+  }
+  busy=false;
+  setTimeout(()=>{btn.textContent=old;btn.disabled=false},4000);
+}
+function checkText(s){
+  if(!s.check_enabled)return '自检关';
+  const c=s.check||{};
+  if(!c.last_check_utc)return '自检待跑';
+  const t=Date.parse(c.last_check_utc);
+  if(isNaN(t))return '自检';
+  const sec=Math.max(0,Math.round((Date.now()-t)/1000));
+  const ago=sec<60?sec+'s前':Math.round(sec/60)+'m前';
+  return (c.last_result==='error'?'自检出错 ':'自检 ')+ago;
+}
+function renderCard(s){
+  const p=$('panel');p.textContent='';
+  const meta=s.suggestion_meta;
+  if(!s.suggestions.length){
+    const e=el('div','empty','还没有生成');const b=el('button','pri','生成');b.style.marginTop='10px';
+    b.onclick=generate;e.appendChild(el('br'));e.appendChild(b);p.appendChild(e);return;
+  }
+  const box=el('div','jv');
+  const h=el('div','jvh');h.appendChild(el('b',null,'回复建议'));
+  let upd='';
+  const t0=meta&&meta.ts_utc?new Date(meta.ts_utc):null;
+  if(t0&&!isNaN(t0))upd=t0.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})+' 更新 · ';
+  h.appendChild(el('span','upd',upd+s.suggestions.length+' 条候选'));
+  box.appendChild(h);
+
+  /* 当前会话条：会话头像 + 名字 + 采集/自检状态 */
+  const strip=el('div','strip');
+  const nm=s.session||'未识别';
+  strip.appendChild(el('div','av',nm.slice(0,1)));
+  strip.appendChild(el('span','nm',nm));
+  strip.appendChild(el('span','chip'+(s.collecting?' on':''),s.collecting?'采集中':'采集未运行'));
+  strip.appendChild(el('span','chip'+(s.check_enabled?' on':''),checkText(s)));
+  box.appendChild(strip);
+
+  box.appendChild(el('div','ok','✓ 建议已更新，选一句适合你的回复'));
+  if(s.last_other&&s.last_other.text){
+    box.appendChild(el('div','say','对方最近说：'));
+    box.appendChild(el('div','quote',cut(s.last_other.text,120)));
+  }
+  const kv=el('div','kv');
+  const tn=meta&&meta.tension;
+  if(tn){
+    const d=el('div');d.appendChild(el('dt',null,'紧张度'));
+    const dd=el('dd'),w=el('span','tn');
+    w.appendChild(el('span','tv',tn+'/9'));
+    const bar=el('span','bar'),i=el('i');
+    i.style.width=(tn/9*100)+'%';
+    i.style.background=tn<=3?'#07c160':(tn<=6?'#e8a33d':'#e05353');
+    bar.appendChild(i);w.appendChild(bar);dd.appendChild(w);
+    d.appendChild(dd);kv.appendChild(d);
+  }
+  const rows=[['建议',meta&&meta.strategy],['可能意图',meta&&meta.intent],['可能需要',meta&&meta.need]];
+  for(const [k,v] of rows){
+    if(!v)continue;const d=el('div');d.appendChild(el('dt',null,k));d.appendChild(el('dd',null,v));kv.appendChild(d);
+  }
+  if(kv.children.length){
+    box.appendChild(el('div','ttl','对话参考'));
+    box.appendChild(kv);
+  }
+  const list=el('div','cands');
+  s.suggestions.forEach((k,i)=>{
+    const c=el('div','cand'+(i===0?' top':''));
+    const ch=el('div','ch');
+    ch.appendChild(el('span','lb',i===0?'推荐回复':('备选 '+i)));
+    ch.appendChild(el('span','pc',(k.score!=null?Math.round(k.score)+'%':'—')));
+    c.appendChild(ch);
+    c.appendChild(el('div','ct',k.text));
+    const f=el('div','cf');f.appendChild(el('span','tag',k.style||'—'));
+    const fb=el('button','fill','填入');
+    if(s.fill_enabled){fb.onclick=()=>fillTo(i,fb);}
+    else{fb.disabled=true;fb.textContent='填入（已关）';fb.title='已关闭：目前只给建议，不替你回';}
+    f.appendChild(fb);
+    const b=el('button',null,'复制');b.onclick=()=>copy(k.text);f.appendChild(b);
+    c.appendChild(f);list.appendChild(c);
+  });
+  box.appendChild(list);
+  box.appendChild(el('div','disc','AI 生成内容仅供参考，请自行判断'));
+  p.appendChild(box);
+}
+function render(s){
+  const ts=s.suggestion_meta&&s.suggestion_meta.ts_utc;
+  if(lastTs&&ts&&ts!==lastTs)toast('检测到新消息，建议已重新生成');
+  if(ts)lastTs=ts;
+  session=s.session;$('sess').textContent=s.session||'（无会话）';
+  $('dot').className='dot'+(s.collecting?' on':'');$('dot').title=s.collecting?'采集中':'采集未运行';
+  renderCard(s);
+  const m=$('msgs');m.textContent='';
+  if(!s.messages.length)m.appendChild(el('div','empty','暂无消息'));
+  for(const x of s.messages){
+    const d=el('div','m '+(x.sender==='me'||x.sender==='them'?x.sender:'unknown'));
+    if(x.time_hint)d.appendChild(el('small',null,x.time_hint));
+    d.appendChild(document.createTextNode(x.text||''));m.appendChild(d);
+  }
+}
+async function refresh(){try{render(await api('/api/state'))}catch(e){if(e.message!=='未登录')toast('刷新失败：'+e.message)}}
+async function generate(){
+  if(busy)return;busy=true;$('regen').disabled=true;$('regen').textContent='生成中…';
+  try{
+    await api('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(session?{session}:{})});
+    await refresh();
+  }catch(e){toast('生成失败：'+e.message)}
+  busy=false;$('regen').disabled=false;$('regen').textContent='重新生成';
+}
+$('regen').onclick=generate;
+refresh();setInterval(()=>{if(!busy)refresh()},5000);
+</script></body></html>

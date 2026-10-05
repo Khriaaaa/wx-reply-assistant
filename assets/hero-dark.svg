@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="1200" viewBox="0 0 2400 1200">
+  <defs>
+    <linearGradient id="paper" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#262522"/>
+      <stop offset="0.55" stop-color="#201F1D"/>
+      <stop offset="1" stop-color="#1B1A18"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.14" cy="0.08" r="0.8">
+      <stop offset="0" stop-color="#F0E6D8" stop-opacity="0.8"/>
+      <stop offset="0.6" stop-color="#E8DCC8" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#2A2926" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow2" cx="0.96" cy="1" r="0.75">
+      <stop offset="0" stop-color="#3A3831" stop-opacity="0.4"/>
+      <stop offset="1" stop-color="#1B1A18" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2E2D29"/>
+      <stop offset="1" stop-color="#2B2A26"/>
+    </linearGradient>
+    <filter id="soft" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="14" stdDeviation="22" flood-color="#3A342A" flood-opacity="0.09"/>
+    </filter>
+    <filter id="soft2" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="13" flood-color="#3A342A" flood-opacity="0.06"/>
+    </filter>
+    <filter id="grain" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="1.1" numOctaves="2" seed="11" result="n"/>
+      <feColorMatrix in="n" type="saturate" values="0"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.03"/></feComponentTransfer>
+    </filter>
+    <style>
+      .disp { font-family: "Noto Serif CJK SC", "Noto Serif", serif; font-weight: 700; fill: #F2EFE7; }
+      .sans { font-family: "Noto Sans CJK SC", "DejaVu Sans", sans-serif; fill: #C3BDB1; }
+      .caps { font-family: "DejaVu Sans", sans-serif; font-weight: 700; letter-spacing: 8px; fill: #D98A6A; }
+    </style>
+  </defs>
+
+  <rect width="2400" height="1200" fill="url(#paper)"/>
+  <rect width="2400" height="1200" fill="url(#glow)"/>
+  <rect width="2400" height="1200" fill="url(#glow2)"/>
+  <rect width="2400" height="1200" filter="url(#grain)" opacity="0.5"/>
+
+  <text class="caps" x="170" y="232" font-size="26">WECHAT REPLY ASSISTANT</text>
+  <rect x="170" y="266" width="96" height="4" rx="2" fill="#D97757" opacity="0.9"/>
+
+  <text class="disp" x="168" y="446" font-size="118" letter-spacing="-1">读你的微信</text>
+  <text class="disp" x="168" y="578" font-size="118" letter-spacing="-1">递上三句能发的话</text>
+
+  <text class="sans" x="172" y="696" font-size="39" fill="#C3BDB1">在 Windows 虚拟机上安静地只读采集，</text>
+  <text class="sans" x="172" y="758" font-size="39" fill="#C3BDB1">大模型看完你们的上下文，</text>
+  <text class="sans" x="172" y="820" font-size="39" fill="#C3BDB1">给每条消息配三个候选，按像你说的程度排序。</text>
+
+  <g transform="translate(172, 878)">
+    <rect x="0" y="0" width="576" height="84" rx="42" fill="#2C2B27" stroke="#4E4A40" stroke-width="2"/>
+    <circle cx="54" cy="42" r="13" fill="#9BAF6E"/>
+    <text class="sans" x="88" y="55" font-size="32" font-weight="700" fill="#EDE9E0">只给建议 · 绝不替你发</text>
+  </g>
+
+  <g transform="translate(1160, 270)">
+    <g filter="url(#soft)">
+      <rect x="0" y="0" width="420" height="568" rx="32" fill="url(#card)"/>
+    </g>
+    <circle cx="54" cy="62" r="23" fill="#3D3B35"/>
+    <text class="sans" x="94" y="74" font-size="31" font-weight="700" fill="#EDE9E0">林同学</text>
+    <rect x="28" y="112" width="364" height="2" fill="#3A3833"/>
+
+    <rect x="28" y="156" width="248" height="80" rx="21" fill="#39372F"/>
+    <text class="sans" x="56" y="204" font-size="28">下周展示你来吗</text>
+    <rect x="158" y="264" width="234" height="80" rx="21" fill="#41492F"/>
+    <text class="sans" x="186" y="312" font-size="28" fill="#DCE6C8">来的，我准备下</text>
+    <rect x="28" y="372" width="276" height="80" rx="21" fill="#39372F"/>
+    <text class="sans" x="56" y="420" font-size="28">那正好，我也有事说</text>
+    <circle cx="44" cy="490" r="8" fill="#5A574D"/>
+    <circle cx="70" cy="490" r="8" fill="#5A574D"/>
+    <circle cx="96" cy="490" r="8" fill="#5A574D"/>
+
+    <path d="M432 442 C 486 442, 472 186, 508 172" stroke="#D97757" stroke-width="3.5" fill="none"
+          stroke-dasharray="12 11" stroke-linecap="round" opacity="0.85"/>
+    <path d="M482 154 L 512 171 L 482 190" stroke="#D97757" stroke-width="4" fill="none"
+          stroke-linecap="round" stroke-linejoin="round"/>
+
+    <g filter="url(#soft2)">
+      <rect x="510" y="0" width="550" height="196" rx="28" fill="#33322D" stroke="#8A5F49" stroke-width="3"/>
+    </g>
+    <text class="sans" x="544" y="62" font-size="27" font-weight="700" fill="#D98A6A">最像你会说的</text>
+    <text class="sans" x="544" y="130" font-size="37" fill="#F4F1E9">来的，正好我也想找你</text>
+    <g transform="translate(958, 46)">
+      <circle cx="36" cy="36" r="34" fill="none" stroke="#46443C" stroke-width="7"/>
+      <path d="M36 2 A 34 34 0 0 1 67 24" stroke="#D97757" stroke-width="7" fill="none" stroke-linecap="round"/>
+      <text class="sans" x="36" y="47" font-size="29" font-weight="700" fill="#D98A6A" text-anchor="middle">82</text>
+    </g>
+
+    <g filter="url(#soft2)">
+      <rect x="510" y="232" width="550" height="152" rx="26" fill="#2E2D28" stroke="#403E36" stroke-width="1.8"/>
+    </g>
+    <text class="sans" x="544" y="288" font-size="31" fill="#E2DED4">来的，几点开始呀</text>
+    <text class="sans" x="1024" y="288" font-size="29" fill="#8C877A" text-anchor="end">65</text>
+
+    <g filter="url(#soft2)">
+      <rect x="510" y="416" width="550" height="152" rx="26" fill="#2E2D28" stroke="#403E36" stroke-width="1.8"/>
+    </g>
+    <text class="sans" x="544" y="472" font-size="31" fill="#E2DED4">嗯，到时候说吧</text>
+    <text class="sans" x="1024" y="472" font-size="29" fill="#8C877A" text-anchor="end">48</text>
+
+    <text class="sans" x="1060" y="612" font-size="25" fill="#8C877A" text-anchor="end">示意图 · 演示数据</text>
+  </g>
+</svg>

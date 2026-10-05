@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="660" viewBox="0 0 1040 660">
+  <defs>
+    <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#A99E8D"/>
+    </marker>
+    <style>
+      .eb { font-family:"Noto Sans CJK SC",sans-serif; font-size:12px; letter-spacing:3.2px; fill:#B5603F; }
+      .ttl { font-family:"Noto Serif CJK SC",serif; font-size:34px; fill:#262522; }
+      .sub { font-family:"Noto Sans CJK SC",sans-serif; font-size:14px; fill:#6E6A61; }
+      .n { font-family:"DejaVu Sans Mono",monospace; font-size:13px; fill:#B5603F; }
+      .h { font-family:"Noto Serif CJK SC",serif; font-size:20px; fill:#262522; }
+      .d { font-family:"Noto Sans CJK SC",sans-serif; font-size:12.5px; fill:#6E6A61; }
+    </style>
+  </defs>
+
+  <rect width="1040" height="660" fill="#FAF8F3"/>
+
+  <text class="eb" x="50" y="66">PIPELINE</text>
+  <text class="ttl" x="50" y="112">一条消息走完的六步</text>
+  <text class="sub" x="50" y="142">每一步都只读、可回看，出错也不会动到你的微信</text>
+
+  <!-- 01 -->
+  <rect x="50" y="186" width="440" height="104" rx="13" fill="#FFFFFF" stroke="#DFD3BC"/>
+  <text class="n" x="76" y="222">01</text>
+  <text class="h" x="120" y="224">读屏</text>
+  <text class="d" x="76" y="252">UIA 只读界面树，只取视口里已实例化的气泡</text>
+  <text class="d" x="76" y="272">不截图猜、不模拟操作</text>
+
+  <line x1="498" y1="238" x2="552" y2="238" stroke="#A99E8D" stroke-width="1.8" marker-end="url(#a2)"/>
+
+  <!-- 02 -->
+  <rect x="560" y="186" width="440" height="104" rx="13" fill="#FFFFFF" stroke="#DFD3BC"/>
+  <text class="n" x="586" y="222">02</text>
+  <text class="h" x="630" y="224">识别发送方</text>
+  <text class="d" x="586" y="252">气泡靠左还是靠右 + 引用文本，两条证据互相印证</text>
+  <text class="d" x="586" y="272">判不出来就整轮不写，宁缺勿错</text>
+
+  <path d="M 780 290 L 780 316 L 270 316 L 270 340" fill="none" stroke="#A99E8D" stroke-width="1.8" marker-end="url(#a2)"/>
+
+  <!-- 03 -->
+  <rect x="50" y="344" width="440" height="104" rx="13" fill="#FFFFFF" stroke="#DFD3BC"/>
+  <text class="n" x="76" y="380">03</text>
+  <text class="h" x="120" y="382">增量入库</text>
+  <text class="d" x="76" y="410">按指纹去重，只追加新消息</text>
+  <text class="d" x="76" y="430">窗口滚动、重复读同一屏都不会写重</text>
+
+  <line x1="498" y1="396" x2="552" y2="396" stroke="#A99E8D" stroke-width="1.8" marker-end="url(#a2)"/>
+
+  <!-- 04 -->
+  <rect x="560" y="344" width="440" height="104" rx="13" fill="#FFFFFF" stroke="#DFD3BC"/>
+  <text class="n" x="586" y="380">04</text>
+  <text class="h" x="630" y="382">去抖触发</text>
+  <text class="d" x="586" y="410">只认对方发来的消息，静默 1.2 秒再合并生成</text>
+  <text class="d" x="586" y="430">连着发三条不会生成三次</text>
+
+  <path d="M 780 448 L 780 474 L 270 474 L 270 498" fill="none" stroke="#A99E8D" stroke-width="1.8" marker-end="url(#a2)"/>
+
+  <!-- 05 -->
+  <rect x="50" y="502" width="440" height="104" rx="13" fill="#FFFFFF" stroke="#DFD3BC"/>
+  <text class="n" x="76" y="538">05</text>
+  <text class="h" x="120" y="540">生成候选</text>
+  <text class="d" x="76" y="568">三条不同策略，带紧张度与意图说明</text>
+  <text class="d" x="76" y="588">模型挂了自动降级到备用 provider</text>
+
+  <line x1="498" y1="554" x2="552" y2="554" stroke="#A99E8D" stroke-width="1.8" marker-end="url(#a2)"/>
+
+  <!-- 06 -->
+  <rect x="560" y="502" width="440" height="104" rx="13" fill="#FFF9F2" stroke="#E0C9A8"/>
+  <text class="n" x="586" y="538">06</text>
+  <text class="h" x="630" y="540">呈现</text>
+  <text class="d" x="586" y="568">面板刷新，哪句合适由你决定</text>
+  <text class="d" x="586" y="588">默认只给建议，不替你回</text>
+</svg>

@@ -1,0 +1,10 @@
+# 复制成 config.local.yaml 再填自己的值（config.local.yaml 不进仓库）。
+# 环境变量优先级更高：WXREPLY_SSH / WXREPLY_SSH_PW / WXREPLY_QGA_UUID / WXREPLY_WORK
+#
+# 面板/生成用的 LLM provider 是另一份配置（默认读 /opt/data/config.yaml，
+# 可用 WXREPLY_CONFIG 指向别处，或放一个项目根的 config.local.yaml 覆盖）——
+# 见 orchestrator/generate.py 顶部的说明。
+vm:
+  ssh: user@nas-host            # NAS 上能 sudo virsh 的账号
+  ssh_pw: ""                    # 留空则走 ssh 公钥认证
+  qga_uuid: ""                  # 虚机 UUID（virsh list --all 能查到）
