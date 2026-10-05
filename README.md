@@ -1,8 +1,5 @@
 <div align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/hero-dark.png">
-    <img src="assets/hero.png" alt="微信回复助手：读你的微信，递上三句能发的话" width="900">
-  </picture>
+  <img src="assets/hero.png" alt="微信回复助手：读你的微信，递上三句能发的话" width="900">
 </div>
 
 <br>
