@@ -41,36 +41,36 @@
   <rect width="2400" height="1200" fill="url(#glow2)"/>
   <rect width="2400" height="1200" filter="url(#grain)" opacity="0.5"/>
 
-  <text class="caps" x="170" y="232" font-size="26">WECHAT REPLY ASSISTANT</text>
+  <text class="caps" x="170" y="234" font-size="32">WECHAT REPLY ASSISTANT</text>
   <rect x="170" y="266" width="96" height="4" rx="2" fill="#C96442" opacity="0.9"/>
 
   <text class="disp" x="168" y="446" font-size="118" letter-spacing="-1">读你的微信</text>
   <text class="disp" x="168" y="578" font-size="118" letter-spacing="-1">递上三句能发的话</text>
 
-  <text class="sans" x="172" y="696" font-size="39" fill="#4F4D47">在 Windows 虚拟机上安静地只读采集，</text>
-  <text class="sans" x="172" y="758" font-size="39" fill="#4F4D47">大模型看完你们的上下文，</text>
-  <text class="sans" x="172" y="820" font-size="39" fill="#4F4D47">给每条消息配三个候选，按像你说的程度排序。</text>
+  <text class="sans" x="172" y="696" font-size="41" fill="#4F4D47">在 Windows 虚拟机上安静地只读采集，</text>
+  <text class="sans" x="172" y="758" font-size="41" fill="#4F4D47">大模型看完你们的上下文，</text>
+  <text class="sans" x="172" y="820" font-size="41" fill="#4F4D47">给每条消息配三个候选，按像你说的程度排序。</text>
 
   <g transform="translate(172, 878)">
-    <rect x="0" y="0" width="576" height="84" rx="42" fill="#FFFAF1" stroke="#E3D2C0" stroke-width="2"/>
+    <rect x="0" y="0" width="612" height="84" rx="42" fill="#FFFAF1" stroke="#E3D2C0" stroke-width="2"/>
     <circle cx="54" cy="42" r="13" fill="#7E8C5A"/>
-    <text class="sans" x="88" y="55" font-size="32" font-weight="700" fill="#3E3C37">只给建议 · 绝不替你发</text>
+    <text class="sans" x="90" y="55" font-size="34" font-weight="700" fill="#3E3C37">只给建议 · 绝不替你发</text>
   </g>
 
-  <g transform="translate(1160, 270)">
+  <g transform="translate(1250, 313)">
     <g filter="url(#soft)">
       <rect x="0" y="0" width="420" height="568" rx="32" fill="url(#card)"/>
     </g>
-    <circle cx="54" cy="62" r="23" fill="#E8E4DA"/>
-    <text class="sans" x="94" y="74" font-size="31" font-weight="700" fill="#3E3C37">林同学</text>
+    <circle cx="56" cy="64" r="25" fill="#E8E4DA"/>
+    <text class="sans" x="98" y="76" font-size="34" font-weight="700" fill="#3E3C37">林同学</text>
     <rect x="28" y="112" width="364" height="2" fill="#F0ECE2"/>
 
-    <rect x="28" y="156" width="248" height="80" rx="21" fill="#EFECE3"/>
-    <text class="sans" x="56" y="204" font-size="28">下周展示你来吗</text>
-    <rect x="158" y="264" width="234" height="80" rx="21" fill="#DFE7CE"/>
-    <text class="sans" x="186" y="312" font-size="28" fill="#33352A">来的，我准备下</text>
-    <rect x="28" y="372" width="276" height="80" rx="21" fill="#EFECE3"/>
-    <text class="sans" x="56" y="420" font-size="28">那正好，我也有事说</text>
+    <rect x="28" y="156" width="272" height="80" rx="21" fill="#EFECE3"/>
+    <text class="sans" x="56" y="206" font-size="30">下周展示你来吗</text>
+    <rect x="120" y="264" width="272" height="80" rx="21" fill="#DFE7CE"/>
+    <text class="sans" x="148" y="314" font-size="30" fill="#33352A">来的，我准备下</text>
+    <rect x="28" y="372" width="296" height="80" rx="21" fill="#EFECE3"/>
+    <text class="sans" x="56" y="422" font-size="30">那正好，我也有事说</text>
     <circle cx="44" cy="490" r="8" fill="#CFCABB"/>
     <circle cx="70" cy="490" r="8" fill="#CFCABB"/>
     <circle cx="96" cy="490" r="8" fill="#CFCABB"/>
@@ -83,26 +83,26 @@
     <g filter="url(#soft2)">
       <rect x="510" y="0" width="550" height="196" rx="28" fill="#FFFCF5" stroke="#DEB79E" stroke-width="3"/>
     </g>
-    <text class="sans" x="544" y="62" font-size="27" font-weight="700" fill="#B85F42">最像你会说的</text>
-    <text class="sans" x="544" y="130" font-size="37" fill="#26251F">来的，正好我也想找你</text>
+    <text class="sans" x="544" y="64" font-size="31" font-weight="700" fill="#B85F42">最像你会说的</text>
+    <text class="sans" x="544" y="132" font-size="38" fill="#26251F">来的，正好我也想找你</text>
     <g transform="translate(958, 46)">
       <circle cx="36" cy="36" r="34" fill="none" stroke="#E7DDCB" stroke-width="7"/>
       <path d="M36 2 A 34 34 0 0 1 67 24" stroke="#C96442" stroke-width="7" fill="none" stroke-linecap="round"/>
-      <text class="sans" x="36" y="47" font-size="29" font-weight="700" fill="#B85F42" text-anchor="middle">82</text>
+      <text class="sans" x="36" y="48" font-size="33" font-weight="700" fill="#B85F42" text-anchor="middle">82</text>
     </g>
 
     <g filter="url(#soft2)">
       <rect x="510" y="232" width="550" height="152" rx="26" fill="#FDFBF6" stroke="#EBE5D7" stroke-width="1.8"/>
     </g>
-    <text class="sans" x="544" y="288" font-size="31" fill="#3B3931">来的，几点开始呀</text>
-    <text class="sans" x="1024" y="288" font-size="29" fill="#A29C8E" text-anchor="end">65</text>
+    <text class="sans" x="544" y="288" font-size="34" fill="#3B3931">来的，几点开始呀</text>
+    <text class="sans" x="1024" y="288" font-size="33" fill="#A29C8E" text-anchor="end">65</text>
 
     <g filter="url(#soft2)">
       <rect x="510" y="416" width="550" height="152" rx="26" fill="#FDFBF6" stroke="#EBE5D7" stroke-width="1.8"/>
     </g>
-    <text class="sans" x="544" y="472" font-size="31" fill="#3B3931">嗯，到时候说吧</text>
-    <text class="sans" x="1024" y="472" font-size="29" fill="#A29C8E" text-anchor="end">48</text>
+    <text class="sans" x="544" y="472" font-size="34" fill="#3B3931">嗯，到时候说吧</text>
+    <text class="sans" x="1024" y="472" font-size="33" fill="#A29C8E" text-anchor="end">48</text>
 
-    <text class="sans" x="1060" y="612" font-size="25" fill="#B0AA9C" text-anchor="end">示意图 · 演示数据</text>
+    <text class="sans" x="1060" y="628" font-size="29" fill="#8E8878" text-anchor="end">示意图 · 演示数据</text>
   </g>
 </svg>
