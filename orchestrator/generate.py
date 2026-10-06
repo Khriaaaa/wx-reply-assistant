@@ -29,6 +29,9 @@ PROMPT = ROOT / "prompts" / "reply_system.md"
 # 容器里用绝对路径；放到虚机/别的机器上跑时那个路径不存在，
 # 于是支持两种覆盖：环境变量 WXREPLY_CONFIG，或项目根下的 config.local.yaml。
 CONFIG_HINT = Path("/opt/data/config.yaml")
+# 面板「首次配置」写的就是这个文件：单独的、不进仓库的小配置，专门放模型接口凭据。
+# 不去改用户的 config.local.yaml —— 那里面常有自己的注释和 vm 段，整段重写会把注释吃掉。
+LLM_CFG = Path(os.environ.get("WXREPLY_LLM_CONFIG", str(ROOT / "store" / ".llm.yaml")))
 _explicit_cfg = os.environ.get("WXREPLY_CONFIG")
 if _explicit_cfg:
     CONFIG = Path(_explicit_cfg)
@@ -42,12 +45,16 @@ def _config_candidates():
     """依次找 provider 凭据的候选配置文件。
 
     WXREPLY_CONFIG 给了就只认它（写错了要吵出来）；
-    否则 config.local.yaml 优先，但它常常只填了 vm 段 ——
-    所以拼不出 provider 链时继续往下找，而不是停在第一份上。
+    否则面板写的 .llm.yaml 优先（那是用户在网页上刚填的），
+    再 config.local.yaml，最后才是随 Hermes 一起来的 /opt/data/config.yaml。
+    拼不出 provider 链时继续往下找，而不是停在第一份上 ——
+    config.local.yaml 常常只填了 vm 段。
     """
     if _explicit_cfg:
         return [Path(_explicit_cfg)]
     cands = []
+    if LLM_CFG.exists():
+        cands.append(LLM_CFG)
     local = ROOT / "config.local.yaml"
     if local.exists():
         cands.append(local)

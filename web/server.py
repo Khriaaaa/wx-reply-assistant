@@ -5,7 +5,10 @@
   python3 web/server.py [--port 8801] [--host 0.0.0.0]
 路径相对脚本位置，不依赖 cwd。数据在 ../store/。
 密码: ../store/.panel_password（不存在则随机生成，仅首次生成时在日志打印一次）
-接口: GET / | /login | /api/state | /api/health ; POST /login | /api/generate | /api/fill
+接口: GET / | /login | /api/state | /api/health | /api/setup ; POST /login | /api/generate | /api/fill | /api/setup
+/api/setup 是「首次配置」：网页上挑一家厂商（预置国内主流厂商的 OpenAI 兼容地址，
+见 orchestrator/providers_cn.py）、填 Key、填模型，服务端真连一次测通再落盘。
+Key 存在 store/.llm.yaml（0600，不进仓库）里，接口只回显尾四位，绝不回传明文。
 /api/fill 把某条候选填进 NAS 虚机里微信的输入框（只填不发送，见 ../tools/fill_vm.py）。
 **默认关闭**：目标就是「只给建议、不替你回」。要开就设环境变量 HERMES_PANEL_ALLOW_FILL=1
 或放一个 store/.allow_fill 文件，重启即生效；关闭时接口一律 403。
@@ -14,6 +17,7 @@
 import argparse
 import hashlib
 import hmac
+import importlib.util
 import json
 import os
 import re
@@ -22,10 +26,14 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote
+
+import yaml
 
 WEB = Path(__file__).resolve().parent
 ROOT = WEB.parent
@@ -43,6 +51,8 @@ GEN_BUDGET = float(os.environ.get("WXREPLY_BUDGET", "150"))
 GEN_TIMEOUT = GEN_BUDGET + 30
 PW_FILE = STORE / ".panel_password"
 SECRET_FILE = STORE / ".panel_secret"
+# 「首次配置」写到这里：单独的 0600 私密文件，不进仓库、也不动用户的 config.local.yaml
+LLM_CFG = Path(os.environ.get("WXREPLY_LLM_CONFIG", str(STORE / ".llm.yaml")))
 COOKIE = "panel_session"
 COOKIE_TTL = 7 * 86400
 
@@ -289,6 +299,181 @@ def state():
     }
 
 
+# ---------------------------------------------------------------- 首次配置（模型接口）
+LLM_ENTRY = "wxreply"        # 写进 custom_providers 的那条的名字
+sys.path.insert(0, str(ROOT / "orchestrator"))
+import providers_cn          # noqa: E402  国内厂商的 OpenAI 兼容地址预置表
+
+
+def _hint(key):
+    """只回显尾四位。页面上要能看出「填过了」，但不能把 Key 还回去。"""
+    k = (key or "").strip()
+    if not k:
+        return ""
+    return ("…" + k[-4:]) if len(k) > 8 else "已填"
+
+
+def _load_generate():
+    """按文件加载 generate.py，只为复用它那套「候选配置文件」的解析逻辑。
+
+    面板自己再写一份的话迟早错开：网页说已配置、生成说找不到 provider。
+    """
+    spec = importlib.util.spec_from_file_location("wx_generate", GENERATE)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def read_llm_cfg():
+    try:
+        if LLM_CFG.exists():
+            os.chmod(LLM_CFG, 0o600)
+            return yaml.safe_load(LLM_CFG.read_text(encoding="utf-8")) or {}
+    except Exception as e:
+        print(f"[panel] 读 {LLM_CFG.name} 失败: {e}", flush=True)
+    return {}
+
+
+def saved_provider():
+    """面板自己写的那条配置（没有就 None）"""
+    cfg = read_llm_cfg()
+    m = cfg.get("model") or {}
+    ref = str(m.get("provider") or "")
+    name = ref.split(":", 1)[-1] if ref else ""
+    if not name:
+        return None
+    entry = next((p for p in (cfg.get("custom_providers") or [])
+                  if isinstance(p, dict) and p.get("name") == name), None)
+    return {
+        "name": name,
+        "base_url": (entry or {}).get("base_url") or "",
+        "api_key": (entry or {}).get("api_key") or "",
+        "model": m.get("default") or "",
+    }
+
+
+def resolved_chain():
+    """问 generate.py：现在到底能拼出哪条候选链（跟生成时用的是同一套逻辑）"""
+    try:
+        chain = _load_generate().load_providers()
+    except SystemExit:
+        return []
+    except Exception as e:
+        print(f"[panel] 解析 provider 链失败: {type(e).__name__}: {e}", flush=True)
+        return []
+    return [{"provider": lbl, "base_url": base, "model": mid} for lbl, base, _k, mid in chain]
+
+
+def setup_state():
+    saved = saved_provider() or {}
+    chain = resolved_chain()
+    return {
+        "configured": bool(chain),
+        "saved": {
+            "provider": saved.get("name") or "",
+            "base_url": saved.get("base_url") or "",
+            "model": saved.get("model") or "",
+            "key_hint": _hint(saved.get("api_key")),
+            "key_set": bool((saved.get("api_key") or "").strip()),
+        },
+        "chain": chain,
+        "presets": providers_cn.for_panel(),
+        "verified_at": providers_cn.VERIFIED_AT,
+        "config_file": LLM_CFG.name,
+    }
+
+
+def _err_text(status, body):
+    if status == 0:
+        return "连不上：域名解析不到或网络不通"
+    txt = ""
+    try:
+        j = json.loads(body.decode("utf-8", "replace"))
+        e = j.get("error") if isinstance(j, dict) else None
+        if isinstance(e, dict):
+            txt = e.get("message") or e.get("code") or json.dumps(e, ensure_ascii=False)[:200]
+        elif e:
+            txt = str(e)
+        else:
+            txt = (j.get("message") or j.get("msg") or "") if isinstance(j, dict) else ""
+    except Exception:
+        txt = body.decode("utf-8", "replace").strip()
+    txt = re.sub(r"\s+", " ", txt)[:300]
+    return f"HTTP {status}：{txt}" if txt else f"HTTP {status}"
+
+
+def _http_json(url, key=None, payload=None, timeout=15):
+    data = json.dumps(payload).encode() if payload is not None else None
+    req = urllib.request.Request(url, data=data, method="POST" if data is not None else "GET")
+    req.add_header("Content-Type", "application/json")
+    req.add_header("Accept", "application/json")
+    req.add_header("User-Agent", "wx-reply-assistant/panel")
+    if key:
+        req.add_header("Authorization", "Bearer " + key)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.status, r.read(300000)
+    except urllib.error.HTTPError as e:
+        try:
+            return e.code, e.read(8000)
+        except Exception:
+            return e.code, b""
+    except Exception as e:
+        return 0, f"{type(e).__name__}: {e}".encode()
+
+
+def probe_endpoint(base, key, model=""):
+    """真连一次，别只看语法。
+
+    先拉模型列表（/models，不花 token）—— 多数国内厂商都实现了，顺便把
+    模型名列表带回来给页面下拉用。列表拿不到再用 1 个 token 试一次对话。
+    """
+    base = (base or "").rstrip("/")
+    models, detail = [], ""
+    status, body = _http_json(base + "/models", key, timeout=15)
+    if status == 200:
+        try:
+            j = json.loads(body.decode("utf-8", "replace"))
+            models = [str(x.get("id")) for x in (j.get("data") or [])
+                      if isinstance(x, dict) and x.get("id")]
+        except Exception:
+            models = []
+        if models:
+            return True, models, f"接口通了，你这账号下有 {len(models)} 个模型"
+        if not model:
+            return True, models, "接口通了（这个厂商没给模型列表，得手填模型名）"
+    if not model:
+        return False, models, _err_text(status, body)
+    detail = _err_text(status, body)
+    status2, body2 = _http_json(base + "/chat/completions", key,
+                                {"model": model,
+                                 "messages": [{"role": "user", "content": "hi"}],
+                                 "max_tokens": 1}, timeout=30)
+    if status2 == 200:
+        return True, models, "接口通了（1 个 token 的对话测试也过了）"
+    return False, models, _err_text(status2, body2) or detail
+
+
+def save_llm_cfg(base, key, model, entry_name=LLM_ENTRY):
+    """原子落盘 0600。只动 model 段和 custom_providers 里自己那条，别的不碰。"""
+    LLM_CFG.parent.mkdir(parents=True, exist_ok=True)
+    cfg = read_llm_cfg()
+    provs = [p for p in (cfg.get("custom_providers") or [])
+             if isinstance(p, dict) and p.get("name") != entry_name]
+    provs.append({"name": entry_name, "base_url": base.rstrip("/"), "api_key": key})
+    cfg["custom_providers"] = provs
+    m = dict(cfg.get("model") or {})
+    m.update({"default": model, "provider": "custom:" + entry_name, "base_url": base.rstrip("/")})
+    cfg["model"] = m
+    tmp = LLM_CFG.with_name(LLM_CFG.name + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write("# 面板「首次配置」写的模型接口凭据 —— 属于本机私密文件，不进仓库\n")
+        f.write(yaml.safe_dump(cfg, allow_unicode=True, sort_keys=False, default_flow_style=False))
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, LLM_CFG)
+    return LLM_CFG
+
+
 LOGIN_HTML = """<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>登录</title>
 <style>body{font-family:sans-serif;background:#f3f4f6;display:flex;justify-content:center;padding-top:20vh}
@@ -343,7 +528,28 @@ class H(BaseHTTPRequestHandler):
         else:
             self._send(302, b"", headers={"Location": "/login"})
 
+    def _oops(self, e):
+        """兜底：任何没接住的异常都要给客户端一个回应。
+
+        不接的话 BaseHTTPRequestHandler 直接断连接，浏览器只看到
+        「Failed to fetch」，面板上什么线索都没有。
+        """
+        import traceback
+        traceback.print_exc()
+        try:
+            self._send(500, {"error": f"面板内部错误：{type(e).__name__}: {e}"})
+        except Exception:
+            pass
+
     def do_GET(self):
+        try:
+            return self._route_get()
+        except _BodyTooLarge:
+            return self._send(413, {"error": "请求体过大（上限 64KB）"})
+        except Exception as e:
+            return self._oops(e)
+
+    def _route_get(self):
         path = self.path.split("?", 1)[0]
         if path == "/api/health":
             return self._send(200, {"ok": True})
@@ -354,6 +560,8 @@ class H(BaseHTTPRequestHandler):
             return self._deny(api)
         if path == "/api/state":
             return self._send(200, state())
+        if path == "/api/setup":
+            return self._send(200, setup_state())
         if path in ("/", "/index.html"):
             return self._serve_static("index.html")
         if api:
@@ -403,11 +611,15 @@ class H(BaseHTTPRequestHandler):
                 return self._deny(path.startswith("/api/"))
             if path == "/api/generate":
                 return self._generate()
+            if path == "/api/setup":
+                return self._setup()
             if path == "/api/fill":
                 return self._fill()
             self._send(404, {"error": "not found"})
         except _BodyTooLarge:
             return self._send(413, {"error": "请求体过大（上限 64KB）"})
+        except Exception as e:
+            return self._oops(e)
 
     def _login(self):
         ip = self.client_address[0]
@@ -460,6 +672,59 @@ class H(BaseHTTPRequestHandler):
         finally:
             _gen_lock.release()
 
+
+    def _setup(self):
+        """首次配置：挑厂商 → 填 Key/模型 → 服务端真连一次 → 落盘。
+
+        dry_run / list_only 只测不写，给「测试连接」「拉取模型列表」两个按钮用。
+        Key 只在请求体里进、只在落盘时写出，不回显、不写日志。
+        """
+        try:
+            req = json.loads(self._body() or b"{}") or {}
+        except Exception:
+            return self._send(400, {"error": "body 不是合法 JSON"})
+        if not isinstance(req, dict):
+            return self._send(400, {"error": "body 得是 JSON 对象"})
+
+        preset = providers_cn.by_id(str(req.get("provider_id") or "")) or {}
+        base = str(req.get("base_url") or preset.get("base_url") or "").strip().rstrip("/")
+        model = str(req.get("model") or "").strip()
+        key = str(req.get("api_key") or "").strip()
+        list_only = bool(req.get("list_only"))
+
+        if not re.match(r"^https?://[^\s/]+", base):
+            return self._send(400, {"error": "接口地址要以 http:// 或 https:// 开头"})
+        if key and not re.match(r"^[\x21-\x7e]+$", key):
+            # 中文/空格/换行会让 HTTP 头编码直接抛异常，看上去像「网络不通」——
+            # 那是最误导人的报错，所以在发请求前就拦掉
+            return self._send(400, {"error": "API Key 里不能有空格、换行或中文（是不是粘多了）"})
+        saved = saved_provider() or {}
+        if not key:
+            # 只改模型名/地址、Key 留空时沿用已存的那把；地址变了就必须重填
+            same_base = not str(req.get("base_url") or "").strip() or saved.get("base_url") == base
+            if saved.get("api_key") and same_base:
+                key = saved["api_key"]
+            else:
+                return self._send(400, {"error": "API Key 没填"})
+        if not list_only and not model:
+            return self._send(400, {"error": "模型名没填（可以点「拉取模型列表」挑一个）"})
+
+        try:
+            ok, models, detail = probe_endpoint(base, key, "" if list_only else model)
+        except Exception as e:
+            return self._send(502, {"error": "测试连接时出错：%s: %s" % (type(e).__name__, e)})
+        models = models[:300]
+        if req.get("dry_run") or list_only:
+            return self._send(200 if ok else 502, {"ok": ok, "detail": detail, "models": models})
+        if not ok:
+            return self._send(502, {"ok": False, "detail": detail, "models": models,
+                                    "error": "没连上，所以没保存：" + detail})
+        try:
+            save_llm_cfg(base, key, model)
+        except Exception as e:
+            return self._send(500, {"error": "写配置失败：%s: %s" % (type(e).__name__, e)})
+        print(f"[panel] 已保存模型接口：{base} / {model}（Key 不写日志）", flush=True)
+        self._send(200, {"ok": True, "detail": detail, "models": models, "state": setup_state()})
 
     def _fill(self):
         """把第 index 条候选填进虚机微信输入框（只填，不发送）"""

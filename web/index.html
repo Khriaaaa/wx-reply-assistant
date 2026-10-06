@@ -64,14 +64,48 @@ h3{margin:16px 0 6px;font-size:13px;color:#666;font-weight:600}
 .me{align-self:flex-end;background:#95ec69}.them{align-self:flex-start;background:#fff}
 .unknown{align-self:center;background:#dfe2e6}
 .hint{font-size:12px;color:#777;margin:8px 0}
+/* ---- 首次配置弹窗 ---- */
+.modal{position:fixed;inset:0;background:#0b122066;display:none;align-items:center;justify-content:center;z-index:9;padding:12px}
+.modal.on{display:flex}
+.mbox{background:#fff;border-radius:12px;width:100%;max-width:470px;max-height:92vh;overflow:auto;padding:16px 16px 12px;box-shadow:0 10px 40px #0003}
+.mbox h2{margin:0 0 4px;font-size:16px}
+.mbox .sub{margin:0 0 12px;font-size:12px;color:#6b7076;line-height:1.6}
+.fld{display:block;margin:10px 0}
+.fld span{display:block;font-size:12px;color:#6b7076;margin-bottom:4px}
+.fld input,.fld select{width:100%;box-sizing:border-box;padding:8px;border:1px solid #d0d4da;border-radius:6px;font-size:14px;background:#fff;color:#1f2329}
+.withbtn{display:flex;gap:6px}
+.withbtn input{flex:1;min-width:0}
+.note{font-size:11.5px;color:#8b9198;line-height:1.6;margin:8px 0 0}
+.stat{display:none;font-size:12.5px;line-height:1.6;margin-top:10px;padding:8px 10px;border-radius:6px;word-break:break-word}
+.stat.on{display:block}
+.stat.ok{background:#f1fbf5;color:#0a8f4c;border:1px solid #d8f0e2}
+.stat.bad{background:#fdf3f3;color:#c0392b;border:1px solid #f3d9d9}
+.mrow{display:flex;gap:8px;margin-top:14px}
+.mrow button{flex:1;padding:8px;font-size:13.5px}
+.src{font-size:11px;color:#a8adb3;margin:10px 0 0;word-break:break-all}
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#333;color:#fff;padding:8px 14px;border-radius:6px;display:none;max-width:90%;font-size:13px}
 </style></head><body><div class="wrap">
 <header><span id="dot" class="dot"></span><span id="sess">—</span>
+<button id="cfg">设置</button>
 <button id="regen" class="pri">重新生成</button></header>
 <div id="panel"></div>
 <h3>聊天记录</h3>
 <div id="msgs"></div>
-</div><div id="toast"></div>
+</div>
+<!-- 首次打开（还没配模型接口）时自动弹这个 -->
+<div id="mcfg" class="modal"><div class="mbox">
+  <h2>先接一个模型接口</h2>
+  <p class="sub">候选回复由你自己账号下的大模型生成，接口地址与 Key 只留在本机面板目录里（权限 600），不进仓库、不上传</p>
+  <label class="fld"><span>厂商</span><select id="cProv"></select></label>
+  <label class="fld"><span>接口地址</span><input id="cBase" placeholder="https://…/v1" spellcheck="false"></label>
+  <label class="fld"><span>模型</span><span class="withbtn"><input id="cModel" list="cModels" placeholder="deepseek-flash" spellcheck="false"><button id="cPull" class="mini">拉取模型列表</button></span><datalist id="cModels"></datalist></label>
+  <label class="fld"><span>API Key</span><input id="cKey" type="password" autocomplete="off" placeholder="sk-…" spellcheck="false"></label>
+  <p class="note" id="cNote"></p>
+  <div class="stat" id="cStat"></div>
+  <div class="mrow"><button id="cTest">测试连接</button><button id="cSave" class="pri">保存并开始</button><button id="cClose">稍后</button></div>
+  <p class="src" id="cSrc"></p>
+</div></div>
+<div id="toast"></div>
 <script>
 const $=id=>document.getElementById(id);
 let session=null,busy=false,lastTs=null;
@@ -197,15 +231,119 @@ function render(s){
     d.appendChild(document.createTextNode(x.text||''));m.appendChild(d);
   }
 }
-async function refresh(){try{render(await api('/api/state'))}catch(e){if(e.message!=='未登录')toast('刷新失败：'+e.message)}}
+async function refresh(){
+  try{
+    render(await api('/api/state'));
+    if(!setup){
+      await loadSetup();
+      // 首次打开且还没配模型接口 —— 直接把配置弹出来，别让用户先撞一次“生成失败”
+      if(!setup.configured&&!setupShown)
+        openSetup('第一次用：地址已经按厂商填好了，你只需要补一个 API Key');
+    }
+  }catch(e){if(e.message!=='未登录')toast('刷新失败：'+e.message)}
+}
 async function generate(){
-  if(busy)return;busy=true;$('regen').disabled=true;$('regen').textContent='生成中…';
+  if(busy)return;
+  if(setup&&!setup.configured){openSetup('还没配模型接口，填完就能生成');return}
+  busy=true;$('regen').disabled=true;$('regen').textContent='生成中…';
   try{
     await api('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(session?{session}:{})});
     await refresh();
   }catch(e){toast('生成失败：'+e.message)}
   busy=false;$('regen').disabled=false;$('regen').textContent='重新生成';
 }
+
+/* ---- 首次配置（模型接口） ---- */
+let setup=null,setupShown=false;
+function presetById(id){return ((setup&&setup.presets)||[]).find(p=>p.id===id)}
+function guessPreset(s){
+  const b=((s&&s.base_url)||'').replace(/\/+$/,'');
+  if(!b)return null;
+  return ((setup&&setup.presets)||[]).find(p=>(p.base_url||'').replace(/\/+$/,'')===b)||null;
+}
+function fillModels(list){
+  const dl=$('cModels');dl.textContent='';
+  (list||[]).forEach(m=>{const o=document.createElement('option');o.value=m;dl.appendChild(o)});
+}
+function setStat(cls,txt,detail){
+  const e=$('cStat');
+  if(!txt&&!detail){e.className='stat';e.textContent='';return}
+  e.className='stat on '+(cls||'');e.textContent=txt+(detail?((txt?' ｜ ':'')+detail):'');
+}
+function applyPreset(id,force){
+  const p=presetById(id);if(!p)return;
+  if(force||!$('cBase').value)$('cBase').value=p.base_url||'';
+  if(force||!$('cModel').value)$('cModel').value=(p.models||[])[0]||'';
+  fillModels(p.models);
+  $('cNote').textContent=p.note||'';
+  $('cSrc').textContent=p.src?('接口来源 '+p.src):'';
+  if(!$('cKey').value)$('cKey').placeholder=keyPlaceholder();
+}
+function keyPlaceholder(){
+  const s=(setup&&setup.saved)||{};
+  return s.key_set?('已保存 '+s.key_hint+'，留空表示不改'):'sk-…';
+}
+async function loadSetup(){
+  setup=await api('/api/setup');
+  const sel=$('cProv');sel.textContent='';
+  (setup.presets||[]).forEach(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.name;sel.appendChild(o)});
+  return setup;
+}
+function openSetup(msg){
+  setupShown=true;$('mcfg').classList.add('on');
+  const s=(setup&&setup.saved)||{};
+  $('cBase').value=s.base_url||'';$('cModel').value=s.model||'';$('cKey').value='';
+  const p=guessPreset(s);
+  $('cProv').value=p?p.id:(s.base_url?'custom':'deepseek');
+  applyPreset($('cProv').value,false);
+  $('cKey').placeholder=keyPlaceholder();
+  setStat('',msg||'','');
+}
+function closeSetup(){$('mcfg').classList.remove('on')}
+function cfgBody(extra){
+  return Object.assign({provider_id:$('cProv').value,base_url:$('cBase').value.trim(),
+    model:$('cModel').value.trim(),api_key:$('cKey').value},extra||{});
+}
+async function testConn(){
+  const btn=$('cTest');btn.disabled=true;btn.textContent='测试中…';
+  setStat('','正在连…','');
+  try{
+    const r=await api('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfgBody({dry_run:true}))});
+    if(r.models&&r.models.length)fillModels(r.models);
+    setStat('ok','✓ '+r.detail,'');
+  }catch(e){setStat('bad','✗ '+e.message,'')}
+  btn.disabled=false;btn.textContent='测试连接';
+}
+async function pullModels(){
+  const btn=$('cPull');btn.disabled=true;btn.textContent='拉取中…';
+  setStat('','正在拉模型列表…','');
+  try{
+    const model=$('cModel').value.trim();
+    $('cModel').value='';
+    const r=await api('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfgBody({list_only:true}))});
+    fillModels(r.models);
+    if((r.models||[]).length){$('cModel').value=r.models[0];setStat('ok','✓ '+r.detail,'已填第一个，可下拉换');}
+    else{$('cModel').value=model;setStat('','',r.detail||'');$('cStat').className='stat on';$('cStat').textContent=r.detail||'';}
+  }catch(e){setStat('bad','✗ '+e.message,'')}
+  btn.disabled=false;btn.textContent='拉取模型列表';
+}
+async function saveSetup(){
+  const btn=$('cSave');btn.disabled=true;btn.textContent='保存中…';
+  try{
+    const r=await api('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfgBody())});
+    if(r.state)setup=r.state;
+    $('cKey').value='';toast('已保存，开始生成');closeSetup();
+    await refresh();
+  }catch(e){setStat('bad','✗ '+e.message,'')}
+  btn.disabled=false;btn.textContent='保存并开始';
+}
+$('cProv').onchange=()=>applyPreset($('cProv').value,true);
+$('cTest').onclick=testConn;$('cPull').onclick=pullModels;
+$('cSave').onclick=saveSetup;$('cClose').onclick=closeSetup;
+$('cfg').onclick=async()=>{
+  try{if(!setup)await loadSetup();openSetup('换厂商、换 Key、换模型都在这里')}
+  catch(e){toast('读取配置失败：'+e.message)}
+};
 $('regen').onclick=generate;
 refresh();setInterval(()=>{if(!busy)refresh()},5000);
 </script></body></html>

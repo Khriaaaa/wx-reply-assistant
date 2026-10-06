@@ -87,10 +87,9 @@ bash scripts/install.sh --demo
 # 1. 虚机连接参数（不进仓库）
 $EDITOR config.local.yaml                  # 填 ssh / qga_uuid
 
-# 2. 面板与生成用的模型：需要一个 OpenAI 兼容的 /chat/completions 端点
-#    默认读 /opt/data/config.yaml，可用 WXREPLY_CONFIG 指向别处；
-#    换模型用 WXREPLY_LEAD_PROVIDER / WXREPLY_LEAD_MODEL
-#    （见 orchestrator/generate.py 顶部）
+# 2. 模型接口：第一次打开面板会自己弹配置框 —— 挑厂商（预置了国内主流那几家，
+#    地址已填好）、粘一个 API Key、点「拉取模型列表」选个模型，保存。
+#    保存前它会真连一次，连不上不让存。也可以自己写 config.local.yaml（见 INSTALL 第 6 节）
 
 # 3. 起面板看效果（--no-collector = 不连虚机）
 .venv/bin/python3 assistant.py up --port 8801 --no-collector

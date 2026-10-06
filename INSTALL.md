@@ -165,11 +165,29 @@ vm:
 
 ## 6 接模型
 
-需要一个 OpenAI 兼容的 `/chat/completions`。配置按这个顺序找：
+两条路，随便挑一条。
+
+**网页上填（省事）** —— 第一次打开面板会自己弹配置框：
+
+- 「厂商」里预置了 16 家（DeepSeek、阿里云百炼、智谱 GLM、月之暗面 Kimi、火山方舟、
+  百度千帆、讯飞星火、MiniMax、硅基流动、阶跃星辰、腾讯混元、商汤日日新、
+  美团 LongCat、蚂蚁百灵，外加「本地部署」和「自定义」），接口地址已经按官方文档填好
+- 粘一个 API Key 进去，点「拉取模型列表」从你自己账号里取可用模型，选一个
+- 点「保存并开始」之前它会**真连一次**：先 `GET /models`（不花 token），
+  拿不到再用 1 个 token 试一次对话。连不上就不给存，报错直接是厂商原话
+- 填完写在 `store/.llm.yaml`（权限 600，已被 `.gitignore` 排除）。面板只会回显 Key 的尾四位，
+  不会把明文还给浏览器。之后想换厂商/换 Key，点右上角「设置」
+
+预置表在 `orchestrator/providers_cn.py`，每条都带申请入口和官方文档出处；
+端点是逐条实测过的（无 Key 请求回 401 才算通）。厂商改了地址就更新那个文件 ——
+表头上的 `VERIFIED_AT` 是这轮核对的日期。
+
+**自己写配置** —— 需要一个 OpenAI 兼容的 `/chat/completions`。配置按这个顺序找：
 
 1. 环境变量 `WXREPLY_CONFIG` 指向的 yaml（给了就只认它）
-2. 项目根下的 `config.local.yaml`
-3. 默认的 `/opt/data/config.yaml`
+2. `store/.llm.yaml`（就是网页上填的那份）
+3. 项目根下的 `config.local.yaml`
+4. 默认的 `/opt/data/config.yaml`
 
 谁拼得出 provider 链就用谁 —— 所以 `config.local.yaml` 只填了 `vm` 段也没事，
 会继续往下找，不会把模型那半遮蔽掉。
