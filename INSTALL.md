@@ -31,7 +31,21 @@ README 里的「快速开始」只有五步 —— 因为它假设你已经有�
 
 ### 2.2 装一个能读 UIA 的命令行工具
 
-本项目所有窗口操作都走同一套命令。实测用的是 winapp-cli 0.7.1，装在 `C:\winapp-cli\winapp.exe`：
+本项目所有窗口操作都走同一套命令。用的是微软的 **winapp CLI**（开源，`microsoft/WinAppCli`），
+实测版本 0.7.1。在 Windows 上装：
+
+```powershell
+winget install Microsoft.winappcli --source winget
+winapp --help                      # 装完验一下
+winapp --cli-schema                # 想看完整命令表，这个是机器可读的
+```
+
+官方仍在 public preview，命令可能会变；装不上就用
+[GitHub Releases](https://github.com/microsoft/WinAppCli/releases/latest) 的压缩包解压到
+`C:\winapp-cli`。UI automation 那部分的文档在
+[Microsoft Learn](https://learn.microsoft.com/en-us/windows/apps/dev-tools/winapp-cli/ui-automation)。
+
+要用到的就这几个命令：
 
 | 命令 | 用途 |
 | --- | --- |
@@ -68,6 +82,8 @@ C:\winapp-cli\winapp.exe ui inspect chat_message_list -a Weixin -d 12 --json
 | `C:\dl\wxc`（脚本与快照的工作目录） | `collector/wx_collector.py:41` |
 
 PsExec64 是 Sysinternals 的小工具，用来把脚本注入交互会话 —— 3.3 说为什么非它不可。
+winget 装的 winapp 不一定落在 `C:\winapp-cli`，先 `where winapp` 拿到真实路径再改
+`$Winapp`。
 
 ## 3 让这台机器够得着 Windows
 
