@@ -1,0 +1,253 @@
+# 安装教程
+
+README 里的「快速开始」只有五步 —— 因为它假设你已经有一个「能读 UIA 的 Windows」。
+这份教程把那半边补上：从一台装着微信的机器，到网页上出现三条候选。
+
+## 0 装的是什么，装在哪
+
+| 部分 | 跑在哪 | 干什么 |
+| --- | --- | --- |
+| 微信 + 采集脚本 | 一台 Windows（虚拟机或实体机） | 读屏，把当前会话写成一圈快照 |
+| 采集器 / 编排 / 面板 | 一台 Linux（这里是 NAS） | 拉取、入库、调模型、出网页 |
+| 模型端点 | 网络的另一头 | 只看「最近若干条」，回三条候选 |
+
+数据是单向的：Windows 那侧只被读，不接收任何写入。填入通道默认关闭，见 README 的「边界」。
+
+## 1 准备清单
+
+- 一台 Windows 10 / 11，装好微信（实测版本 4.1.15.13）
+- 一个能读 UIA 的命令行工具（实测 winapp-cli 0.7.1，见 2.2）
+- **跑采集器这台机器要能 ssh 到一个能 `sudo virsh` 的宿主** —— 命令是通过宿主上的
+  `virsh qemu-agent-command` 送进虚机的，不是直连 Windows。虚机就建在这台宿主上
+- Python 3.9+，三个第三方包：`pillow`、`numpy`、`pyyaml`，其余全是标准库
+- 一个 OpenAI 兼容的 `/chat/completions` 端点（地址 + key + 模型名）
+
+## 2 Windows 侧
+
+### 2.1 让屏幕别睡
+
+读屏靠 UIA 加截图，锁屏、最小化、睡眠都读不到。虚拟机里把电源计划改成「从不睡眠」，
+微信窗口保持开着（不用保持最前）。
+
+### 2.2 装一个能读 UIA 的命令行工具
+
+本项目所有窗口操作都走同一套命令。实测用的是 winapp-cli 0.7.1，装在 `C:\winapp-cli\winapp.exe`：
+
+| 命令 | 用途 |
+| --- | --- |
+| `ui list-windows --json` | 找 `Weixin` 窗口，拿 HWND |
+| `ui inspect chat_message_list -a Weixin -d 12 --json` | 读当前聊天的正文 |
+| `ui inspect session_list -a Weixin -d 3` | 读会话列表，确认打开的是哪个会话 |
+| `ui scroll chat_message_list -w <HWND> --wheel -1 --json` | 往下拨一格 |
+| `ui screenshot -w <HWND> --output <路径> --json` | 截整个窗口，判发送方用 |
+
+换成别的实现也行，只要这几个命令对得上。名字不一样就改 `collector/wx_collect.ps1` 里的
+`Invoke-Winapp` 和 `$Winapp` 两处。
+
+### 2.3 验一下它真读得到
+
+```
+C:\winapp-cli\winapp.exe ui inspect chat_message_list -a Weixin -d 12 --json
+```
+
+期望输出里有 `mmui::ChatTextItemView`，`name` 就是消息正文；列表顺序即时间顺序。
+只有 `ChatItemView`（`name` 像 `昨天 08:36`）说明那是时间分隔条，没有真消息 ——
+多半是微信没打开任何会话。
+
+顺便记一条：UIA **不告诉你哪句话是谁说的**，所以发送方还得靠气泡位置和引用关系判，
+细节在 [notes.md](notes.md) 第 1 节。
+
+### 2.4 三个写死的路径
+
+要么照这个摆法，要么改代码：
+
+| 路径 | 写在哪 |
+| --- | --- |
+| `C:\winapp-cli\winapp.exe` | `collector/wx_collect.ps1:24` |
+| `C:\dl\PsExec64.exe` | `collector/wx_collector.py`（启动/停止采集的两处） |
+| `C:\dl\wxc`（脚本与快照的工作目录） | `collector/wx_collector.py:41` |
+
+PsExec64 是 Sysinternals 的小工具，用来把脚本注入交互会话 —— 3.3 说为什么非它不可。
+
+## 3 让这台机器够得着 Windows
+
+### 3.1 虚拟机（QEMU / KVM）
+
+虚机里装好 qemu-guest-agent 并让它常驻（virtio-win 里的 guest agent）。
+在宿主上验：
+
+```bash
+virsh domuuid <虚机名>                                      # 这个 UUID 要填进配置
+sudo virsh qemu-agent-command <uuid> '{"execute":"guest-ping"}'
+```
+
+第二条返回 `{"return":{}}` 就算通。
+
+### 3.2 实体机
+
+实体机没有 QGA 可走，用 OpenSSH Server + PsExec。`config.local.yaml` 里的 `vm.ssh`
+填 Windows 的账号，`qga_uuid` 留空。
+
+**这条路线实测没走完。** 项目是在虚机 + QGA 上验出来的；实体机只确认了「SSH 能进 +
+PsExec 能注入 session 1」这一步，采集循环本身没在实体机上跑过，坑可能不止一个。
+
+### 3.3 为什么非要注入交互会话
+
+通过 QGA（或任何后台服务）起的进程都在 session 0，而微信窗口在用户登录的 session 1
+里 —— 从 session 0 读 UIA 拿回来是空的，看起来像「工具坏了」。所以每个窗口操作都要：
+
+```
+PsExec64 -accepteula -nobanner -i 1 -d powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\dl\wx_collect.ps1
+```
+
+`-i 1` 就是「进 session 1 跑」。采集脚本自己管这件事，你只需要把 PsExec64 放对地方。
+
+## 4 把项目放上去
+
+```bash
+git clone https://github.com/Khriaaaa/wx-reply-assistant.git
+cd wx-reply-assistant
+python3 -m venv .venv && .venv/bin/pip install pillow numpy pyyaml
+```
+
+目录结构见 README 的「结构」一节。采集器（PowerShell + Python）和编排层都可以单独跑，
+只有生成那一步需要网络。
+
+## 5 填虚机连接参数
+
+```bash
+cp config.example.yaml config.local.yaml
+```
+
+```yaml
+vm:
+  ssh: user@nas-host        # 能 sudo virsh 的那台，不是 Windows
+  ssh_pw: ""                # 留空则走 ssh 公钥认证
+  qga_uuid: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"   # virsh domuuid 拿到的
+```
+
+不想写文件也可以用环境变量，优先级更高：`WXREPLY_SSH`、`WXREPLY_SSH_PW`、
+`WXREPLY_QGA_UUID`、`WXREPLY_WORK`。
+
+`config.local.yaml` 已经在 `.gitignore` 里，不会被推到任何地方。
+
+## 6 接模型
+
+需要一个 OpenAI 兼容的 `/chat/completions`。配置按这个顺序找：
+
+1. 环境变量 `WXREPLY_CONFIG` 指向的 yaml
+2. 项目根下的 `config.local.yaml`
+3. 默认的 `/opt/data/config.yaml`
+
+yaml 里 provider 段的形状，见 `orchestrator/generate.py` 顶部注释。先别急着发请求，
+拼出来看一眼：
+
+```bash
+python3 orchestrator/generate.py --session <会话名> --dry-run --verbose
+```
+
+`--dry-run` 只打印 prompt，不调 API。确认里面是你要的那段对话，再去掉它。
+
+候选链默认按顺序试多个 provider，整条链有总时间预算（默认 150 秒，`WXREPLY_BUDGET`
+可改）—— 预算不够时会直接跳过后面的备用 provider，而不是让整轮被外层超时杀掉。
+
+## 7 先看界面（合成数据）
+
+不用连虚机就能看到界面长什么样：
+
+```bash
+python3 tools/make_demo_store.py --out store     # 16 条演示消息 + 1 条建议
+python3 assistant.py up --port 8801 --no-collector
+```
+
+浏览器打开 `http://<这台机器的IP>:8801`，首次启动的随机密码写在 `store/.panel_password`。
+（`--no-collector` 是「不连虚机」，只想看界面时加。）
+
+## 8 真采集
+
+```bash
+python3 collector/wx_collector.py start     # 推脚本进虚机并起循环
+python3 collector/wx_collector.py status    # 心跳 + 日志尾 + 已存条数
+python3 collector/wx_collector.py poll      # 手动搬一轮
+```
+
+每轮的日志里这几个字段都要 `ok` 才算一轮干净：
+
+| 字段 | 含义 | 不正常时 |
+| --- | --- | --- |
+| `chat` | 聊天正文读到了 | `NO-BUBBLES` = 微信掉登录，或没打开会话 |
+| `title` / `sessions` | 会话名与列表 | 报错多半是窗口选错了 |
+| `shot` | 截图落到唯一路径 | 失败则发送方只能记 `unknown` |
+| `window` / `scroll` | 窗口原点、向下拨一格 | `element_not_found` = 选错窗口 |
+
+存下来的是 `store/messages.jsonl`，每行一条：
+`ts_utc` / `session` / `sender`（`me` 或 `them`）/ `text` / `time_hint` / `fp`。
+
+想连生成一起跑，直接：
+
+```bash
+python3 assistant.py up            # 采集 + 自动生成 + 面板，一把起
+python3 assistant.py status
+python3 assistant.py down
+```
+
+`watch` 线程的触发条件是「对方的新消息 + 静默 1.2 秒」—— 对方连发三条只会生成一次。
+
+## 9 让它常驻
+
+`assistant.py up` 是后台起进程，不适合交给 systemd。要长期跑，两个前台进程各管一个：
+
+```ini
+[Unit]
+Description=微信回复助手 · 面板
+[Service]
+WorkingDirectory=/path/to/wx-reply-assistant
+ExecStart=/usr/bin/python3 web/server.py --port 8801 --check-interval 45
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+```
+
+另一个 unit 把 `ExecStart` 换成 `/usr/bin/python3 orchestrator/watch.py`。
+面板自带自检线程，发现对方来了新消息会自己重新生成一轮，所以 watch 可以不起。
+
+## 10 验收清单
+
+按顺序过一遍，哪一步不对就停在那一节：
+
+| # | 做什么 | 期望 |
+| --- | --- | --- |
+| 1 | 宿主上 `virsh qemu-agent-command <uuid> '{"execute":"guest-ping"}'` | `{"return":{}}` |
+| 2 | 虚机里手动跑一次 `ui inspect chat_message_list` | 有 `mmui::ChatTextItemView` |
+| 3 | `python3 tools/make_demo_store.py` 后起面板 | 网页上有三条候选 |
+| 4 | `python3 orchestrator/generate.py --session <名> --dry-run` | 打出完整 prompt |
+| 5 | `python3 collector/wx_collector.py poll` | `new>0`，且 sender 是 `me` / `them`，不是 `unknown` |
+
+第 5 条是全链路的分水岭：`unknown` 说明截图那一步没成功，看第 8 节的 `shot` 字段。
+
+## 11 排障
+
+| 症状 | 原因 | 处理 |
+| --- | --- | --- |
+| 所有消息都存成 `unknown` | 截图失败（`shot` 非 ok），左右位置判不出来 | 看 `store/cache/` 里有没有当轮截图；工作目录要能被覆盖写 |
+| `chat=NO-BUBBLES` | 微信掉登录，或没打开会话 | 登回去、点开一个会话 |
+| `scroll=FAIL`，`element_not_found` | 机器上有多个微信窗口，工具自动选了最大的那个 | 保证滚动命令带 `-w <HWND>`，HWND 每轮从 `list-windows` 现取 |
+| 脚本里的中文变乱码、引号被砸坏 | `.ps1` 少了 UTF-8 BOM，PS 5.1 按 ANSI 读 | 写文件时前置 `EF BB BF`（`tools/ps1run.py` 已经这么干） |
+| `guest-exec: ... Permission denied` | 长脚本塞进了 `-EncodedCommand`，跟内容无关、跟长度有关 | 落地成文件用 `-File` |
+| 推大脚本失败 | 整段 base64 塞进一条 QGA 命令行，超过约 8KB 被拒 | 用 `tools/ga.py put` 分片写，写完核对虚机上的实际文件大小 |
+| 「文件正被另一进程使用」 | QGA 读文件会在虚机侧漏句柄，那个路径之后写不进去 | 每轮用唯一文件名 + 一个指针文件指向当轮结果 |
+| 模型返回空字符串、像没回话 | 带推理的模型 `max_tokens` 给小了 | 调大 `max_tokens`，或换模型 |
+| 修了历史行，重启后少了一截 | 直接 `open(w)` 写，中途被杀就只剩前 N 行 | 已经改成临时文件 + 原子替换 |
+| 面板候选一直是空的 | 没有「对方的新消息」触发（最后一条是你发的就不生成） | 正常行为；想手动跑一次用 `generate.py` |
+
+每条都对应 `docs/notes.md` 里的一段实测记录，那里写得更细。
+
+## 12 停掉
+
+```bash
+python3 assistant.py down                    # 采集 + 生成 + 面板，一起停
+python3 collector/wx_collector.py stop       # 只停虚机里的采集循环
+```
+
+`stop` 会去虚机里结束采集进程，不会动微信本身。

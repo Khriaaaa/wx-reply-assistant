@@ -76,6 +76,9 @@ store/         运行期数据（聊天记录、建议、截图）—— 不进�
 并且装了一个能读 UIA 的命令行工具（这个项目用的是 winapp-cli 风格的一套 `ui inspect` /
 `ui scroll` / `ui screenshot` 命令）。
 
+> 从零开始 —— Windows 侧那两个工具怎么装、guest agent 怎么验通、模型怎么接、
+> 每一步怎么确认成功 —— 都在 **[INSTALL.md](INSTALL.md)**。
+
 ```bash
 # 1. 虚机连接参数（不进仓库）
 cp config.example.yaml config.local.yaml   # 填 ssh / qga_uuid
