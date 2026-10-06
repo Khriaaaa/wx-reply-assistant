@@ -18,10 +18,12 @@ import argparse
 import hashlib
 import hmac
 import importlib.util
+import ipaddress
 import json
 import os
 import re
 import secrets
+import socket
 import subprocess
 import sys
 import threading
@@ -31,7 +33,7 @@ import urllib.request
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, unquote
+from urllib.parse import parse_qs, unquote, urlparse
 
 import yaml
 
@@ -49,6 +51,27 @@ CHECK_TIMEOUT = 240          # 一轮自检里「拉起虚机采集 + 搬运」�
 # 这里只要比它多一点即可：比预算小的话，generate 还没轮到备用 provider 就被杀了。
 GEN_BUDGET = float(os.environ.get("WXREPLY_BUDGET", "150"))
 GEN_TIMEOUT = GEN_BUDGET + 30
+
+# generate.py 的退出码 → 浏览器能看的一句人话。
+# 不靠匹配中文报错文案（模型一改、文案一动就废），只看退出码。
+# generate 的 stderr 里有模型返回原文 —— 那可能就是聊天内容，只写服务端日志，
+# 不进 JSON 响应，也不进 checker.json（checker.json 整个会被 /api/state 回给浏览器）。
+_GEN_ERR = {2: "还没配好模型接口",
+            3: "模型接口请求失败（Key、额度或网络）",
+            4: "模型返回的格式不对，已可重试",
+            5: "当前会话没有消息"}
+
+
+def gen_err_summary(rc):
+    return _GEN_ERR.get(rc, f"生成失败（代码 {rc}），详情见服务端日志")
+
+
+def log_raw(where, r):
+    """完整 stderr 只进服务端日志（store/logs/panel.log，0600），不回浏览器。"""
+    txt = (r.stderr or r.stdout or f"退出码 {r.returncode}").strip()
+    print(f"[gen] {where}（退出码 {r.returncode}）：\n{txt}", flush=True)
+
+
 PW_FILE = STORE / ".panel_password"
 SECRET_FILE = STORE / ".panel_secret"
 # 「首次配置」写到这里：单独的 0600 私密文件，不进仓库、也不动用户的 config.local.yaml
@@ -124,8 +147,10 @@ def check_round():
         except Exception:
             pass
     if r.returncode != 0:
-        write_check(last_check_utc=utcnow(), last_result="error", guest_running=guest_running, guest_started=guest_started,
-                    error=(out.strip()[-300:] or f"采集退出码 {r.returncode}"))
+        print(f"[gen] 采集端出错（退出码 {r.returncode}）：\n{out.strip()}", flush=True)
+        write_check(last_check_utc=utcnow(), last_result="error", guest_running=guest_running,
+                    guest_started=guest_started,
+                    error=f"采集端出错（退出码 {r.returncode}），详情见服务端日志")
         return False
 
     msgs = read_jsonl(MESSAGES)
@@ -164,8 +189,9 @@ def check_round():
                     guest_started=guest_started, error=None, msgs=len(msgs))
         return False
     if rr.returncode != 0:
-        write_check(last_check_utc=utcnow(), last_result="error", guest_running=guest_running, guest_started=guest_started,
-                    error=(rr.stderr or rr.stdout or f"退出码 {rr.returncode}").strip()[-300:])
+        log_raw("自检生成失败", rr)
+        write_check(last_check_utc=utcnow(), last_result="error", guest_running=guest_running,
+                    guest_started=guest_started, error=gen_err_summary(rr.returncode))
         return False
     write_check(last_check_utc=utcnow(), last_result="updated", guest_running=guest_running, guest_started=guest_started,
                 error=None, msgs=len(msgs), last_change_utc=utcnow(), last_session=session)
@@ -301,6 +327,17 @@ def pick_session(msgs):
         return None
 
 
+def safe_check():
+    """checker.json 整个会被回给浏览器。旧版本往 error 里写过 generate 的 stderr 原文
+    （模型返回里可能带聊天内容），所以按长度兜一层，别让历史残留漏出去。
+    新写入的都是 gen_err_summary() 的短句，这里只为清掉旧文件。"""
+    c = dict(read_check())
+    err = c.get("error")
+    if isinstance(err, str) and len(err) > 200:
+        c["error"] = "生成失败，详情见服务端日志"
+    return c
+
+
 def state():
     msgs = read_jsonl(MESSAGES)
     recs = read_jsonl(SUGGESTIONS)
@@ -330,7 +367,7 @@ def state():
                              "source_last_fp", "model")} if sug else None,
         "collecting": collecting,
         "fill_enabled": fill_enabled(),
-        "check": read_check(),
+        "check": safe_check(),
         "check_enabled": check_enabled(),
     }
 
@@ -451,6 +488,55 @@ def _err_text(status, body):
     return f"HTTP {status}：{txt}" if txt else f"HTTP {status}"
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """不许 urllib 跟着 3xx 走。
+
+    只解析域名判内网还不够：外网地址回一个 302 指向 127.0.0.1 或 192.168.x.x，
+    跟着跳过去照样能打到内网。redirect_request 返回 None → urllib 直接抛 HTTPError，
+    probe 那边就会把「HTTP 302」当连接失败报出来。
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None        # 真正拦住的就是这一行；类里没这个方法等于没拦（踩过一次）
+
+
+_opener = urllib.request.build_opener(_NoRedirect)
+
+
+def allow_private_base():
+    """放行内网地址：本机跑 Ollama / LM Studio（http://192.168.x.x:11434/v1）时要用。
+    跟 .allow_fill、--lan 一个风格：环境变量或 store 下的标记文件。"""
+    if os.environ.get("WXREPLY_ALLOW_PRIVATE_BASE") == "1":
+        return True
+    return (STORE / ".allow_private_base").exists()
+
+
+def check_base_url(base):
+    """接口地址不许指向内网 / 回环 / 链路本地 —— 挡住「面板替你去打内网」这类 SSRF。
+
+    用 is_global 而不是 is_private：is_private 在旧版 Python 里不含 100.64.0.0/10
+    （CGNAT，很多云主机内网段就是它）。解析后按 IP 判，不看域名字符串。
+    残余风险：解析和真正连接之间还有个 DNS rebinding 的时间窗，堵死得自己按 IP 连，
+    面板是单用户、地址还是用户自己填的，不值那个复杂度。
+    """
+    u = urlparse(base)
+    if u.scheme not in ("http", "https") or not u.hostname:
+        raise ValueError("接口地址格式不对（要以 http:// 或 https:// 开头）")
+    if allow_private_base():
+        return
+    port = u.port or (443 if u.scheme == "https" else 80)
+    try:
+        infos = socket.getaddrinfo(u.hostname, port, type=socket.SOCK_STREAM)
+    except socket.gaierror as e:
+        raise ValueError(f"接口地址解析不了（域名对不对、这台机器有没有网）：{e}") from None
+    for ai in infos:
+        ip = ipaddress.ip_address(ai[4][0].split("%", 1)[0])
+        if getattr(ip, "ipv4_mapped", None):
+            ip = ip.ipv4_mapped
+        if not ip.is_global:
+            raise ValueError("接口地址指向内网，已拒绝（本地模型请显式开启 allow_private_base）")
+
+
 def _http_json(url, key=None, payload=None, timeout=15):
     data = json.dumps(payload).encode() if payload is not None else None
     req = urllib.request.Request(url, data=data, method="POST" if data is not None else "GET")
@@ -460,7 +546,7 @@ def _http_json(url, key=None, payload=None, timeout=15):
     if key:
         req.add_header("Authorization", "Bearer " + key)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        with _opener.open(req, timeout=timeout) as r:
             return r.status, r.read(300000)
     except urllib.error.HTTPError as e:
         try:
@@ -718,7 +804,9 @@ class H(BaseHTTPRequestHandler):
             if r.returncode != 0:
                 if r.returncode == 75:      # generate.EXIT_BUSY：另一处正在生成
                     return self._send(429, {"error": "已有生成任务在跑，稍后再试"})
-                return self._send(502, {"error": (r.stderr or r.stdout or f"退出码 {r.returncode}").strip()[-2000:]})
+                # stderr 里有模型返回原文（可能带聊天内容）：只进日志，回浏览器的是分档摘要
+                log_raw("手动生成失败", r)
+                return self._send(502, {"error": gen_err_summary(r.returncode)})
             recs = read_jsonl(SUGGESTIONS)
             if len(recs) <= before:
                 return self._send(502, {"error": "generate.py 成功退出但没有写出新建议"})
@@ -748,6 +836,10 @@ class H(BaseHTTPRequestHandler):
 
         if not re.match(r"^https?://[^\s/]+", base):
             return self._send(400, {"error": "接口地址要以 http:// 或 https:// 开头"})
+        try:
+            check_base_url(base)
+        except ValueError as e:
+            return self._send(400, {"error": str(e)})
         if key and not re.match(r"^[\x21-\x7e]+$", key):
             # 中文/空格/换行会让 HTTP 头编码直接抛异常，看上去像「网络不通」——
             # 那是最误导人的报错，所以在发请求前就拦掉
@@ -773,6 +865,10 @@ class H(BaseHTTPRequestHandler):
         if not ok:
             return self._send(502, {"ok": False, "detail": detail, "models": models,
                                     "error": "没连上，所以没保存：" + detail})
+        try:
+            check_base_url(base)          # 保存前再走一次，免得以后有人把上面那段挪走
+        except ValueError as e:
+            return self._send(400, {"error": str(e)})
         try:
             save_llm_cfg(base, key, model)
         except Exception as e:
@@ -828,8 +924,8 @@ def main():
     srv = ThreadingHTTPServer((host, a.port), H)
     print(f"[panel] 监听 {host}:{a.port}", flush=True)
     if host not in ("127.0.0.1", "localhost"):
-        print("[panel] ⚠️ 监听在非本机地址：面板走明文 http，聊天记录和模型 Key 都会"
-              "在局域网里裸奔（家里内网可接受，别往公网映射）", flush=True)
+        print("[panel] ⚠️ 监听在非本机地址：面板走明文 http，登录密码和聊天内容都会"
+              "在局域网里明文传输，只在可信网络用，别往公网映射", flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

@@ -111,7 +111,8 @@ try:
     g.call_llm('prompt', False)
     check('两个都坏时报错退出', False)
 except SystemExit as e:
-    check('两个都坏时报错退出', e.code == 1)
+    # 全是「内容不合规」→ 退出码 4（EXIT_BAD_OUTPUT），不再笼统地返回 1
+    check('两个都坏时报错退出（码 4）', e.code == g.EXIT_BAD_OUTPUT, f'code={e.code}')
 
 print('\n=== 3. extract_json：模型多嘴也要挖得出来 ===')
 for name, raw in {

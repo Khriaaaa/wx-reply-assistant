@@ -21,8 +21,12 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
-MESSAGES = ROOT / "store" / "messages.jsonl"
-SUGGESTIONS = ROOT / "store" / "suggestions.jsonl"
+# store 目录可用 WXREPLY_STORE 覆盖（只为测试和多实例；面板侧同名变量同义）。
+# 注意 main() 里 store 是拿来放 .gen.lock 的：不传 --messages 时以前引用了一个
+# 从没定义过的名字，面板那条路径（带 --session 不带 --messages）会直接 NameError。
+STORE = Path(os.environ.get("WXREPLY_STORE", str(ROOT / "store")))
+MESSAGES = STORE / "messages.jsonl"
+SUGGESTIONS = STORE / "suggestions.jsonl"
 PROMPT = ROOT / "prompts" / "reply_system.md"
 
 # provider 凭据来自 Hermes 的 config.yaml。
@@ -108,6 +112,23 @@ def die(msg, code=1):
     sys.exit(code)
 
 
+# 退出码分档：调用方（面板）按码给出一句人话，stderr 原文只留在服务端日志里。
+# stderr 里会出现模型返回原文 —— 那里面就是聊天内容，不能回浏览器、不能进 checker.json。
+EXIT_BUSY = 75           # 拿不到跨进程生成锁：调用方据此回「已有生成任务在跑」
+EXIT_NO_PROVIDER = 2     # 一个能用的 provider 都没配出来
+EXIT_PROVIDER_FAIL = 3   # provider 都试过，请求层面全失败（Key / 额度 / 网络）
+EXIT_BAD_OUTPUT = 4      # 请求成功但内容不合规（JSON 挖不出来 / score 不合法）
+EXIT_NO_MESSAGE = 5      # 没有消息可回
+
+
+class ProviderError(RuntimeError):
+    """请求层面没成功：连不上、HTTP 报错、响应信封不是 OpenAI 形状。"""
+
+
+class OutputError(ValueError):
+    """请求成功，但模型给的内容不合规。子类化 ValueError，老的 except 写法照样接得住。"""
+
+
 class GenLock:
     """跨进程互斥：面板自检线程、面板手动「生成」、watch.py 是三路人马。
 
@@ -168,14 +189,14 @@ def load_messages(path=None):
         except json.JSONDecodeError as e:
             print(f"警告: messages.jsonl 第 {i} 行解析失败: {e}", file=sys.stderr)
     if not msgs:
-        die("messages.jsonl 里没有消息")
+        die("messages.jsonl 里没有消息", code=EXIT_NO_MESSAGE)
     return msgs
 
 
 def build_transcript(msgs, session, limit):
     sel = [m for m in msgs if m.get("session") == session][-limit:]
     if not sel:
-        die(f"会话 {session!r} 没有消息")
+        die(f"会话 {session!r} 没有消息", code=EXIT_NO_MESSAGE)
     lines = []
     for m in sel:
         s = m.get("sender")
@@ -263,14 +284,15 @@ def load_providers(override=None):
     if override:
         explicit = tuple(override) != BUNDLED_LEAD or bool(os.environ.get("WXREPLY_LEAD_PROVIDER"))
         if explicit and not any(all(_provider_creds(cfg, override[0])) for cfg in cfgs):
-            die(f"指定 provider {override[0]} 在配置里查不到 base_url / api_key（找过 {', '.join(tried)}）")
+            die(f"指定 provider {override[0]} 在配置里查不到 base_url / api_key（找过 {', '.join(tried)}）",
+                code=EXIT_NO_PROVIDER)
 
     for cfg in cfgs:
         chain = _chain_from(cfg, override)
         if chain:
             return chain
 
-    die("没解析出任何可用的 provider（找过 " + ", ".join(tried) + "）")
+    die("没解析出任何可用的 provider（找过 " + ", ".join(tried) + "）", code=EXIT_NO_PROVIDER)
 
 
 def _try_one(base, key, model, prompt_text, verbose, timeout=120):
@@ -301,18 +323,19 @@ def _try_one(base, key, model, prompt_text, verbose, timeout=120):
         with urllib.request.urlopen(req, timeout=timeout) as r:
             raw = r.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
-        raise RuntimeError(f"HTTP {e.code}: {e.read().decode('utf-8', 'replace')[:400]}") from None
+        raise ProviderError(f"HTTP {e.code}: {e.read().decode('utf-8', 'replace')[:400]}") from None
     except Exception as e:
-        raise RuntimeError(f"{type(e).__name__}: {e}") from None
+        raise ProviderError(f"{type(e).__name__}: {e}") from None
     if verbose:
         print(f"[verbose] {model} 响应长度 {len(raw)}", file=sys.stderr)
     try:
         content = json.loads(raw)["choices"][0]["message"]["content"]
     except Exception as e:
-        raise RuntimeError(f"响应结构异常 ({e})，原始内容: {raw[:400]}") from None
+        raise ProviderError(f"响应结构异常 ({e})，原始内容: {raw[:400]}") from None
     if not content or not content.strip():
-        # 实测：带推理的模型 max_tokens 太小时 content 会是空串，也算失败
-        raise RuntimeError("返回内容为空")
+        # 实测：带推理的模型 max_tokens 太小时 content 会是空串 —— 请求是通的，
+        # 是模型没吐出东西，所以算「输出不合规」，让调用方提示「可重试」
+        raise OutputError("返回内容为空")
     return content
 
 
@@ -323,6 +346,8 @@ def call_llm(prompt_text, verbose, override=None, budget=None):
     备用 provider 永远轮不到（外层 subprocess 先把 generate 杀了）。
     """
     errors = []
+    req_fail = 0
+    bad_out = 0
     budget = BUDGET_SEC if budget is None else float(budget)
     deadline = time.monotonic() + budget
     for label, base, key, model in load_providers(override):
@@ -340,9 +365,16 @@ def call_llm(prompt_text, verbose, override=None, budget=None):
             return obj, label, model
         except Exception as e:
             errors.append(f"  - {label} / {model}: {e}")
+            if isinstance(e, ValueError):    # OutputError：200 但内容不合规
+                bad_out += 1
+            else:
+                req_fail += 1
             if verbose:
                 print(f"[verbose] {label} 失败: {e}", file=sys.stderr)
-    die("所有 provider 都失败了:\n" + "\n".join(errors))
+    # 分开报：全是「内容不合规」时提示可重试，别让用户去查 Key 和额度
+    if bad_out and not req_fail:
+        die("所有 provider 都返回了不合规的内容:\n" + "\n".join(errors), code=EXIT_BAD_OUTPUT)
+    die("所有 provider 都失败了:\n" + "\n".join(errors), code=EXIT_PROVIDER_FAIL)
 
 
 def extract_json(content):
@@ -364,7 +396,7 @@ def extract_json(content):
                 return json.loads(s[i:j + 1])
             except json.JSONDecodeError:
                 pass
-        raise ValueError(f"JSON 解析失败，原始返回:\n{content[:600]}") from None
+        raise OutputError(f"JSON 解析失败，原始返回:\n{content[:600]}") from None
 
 
 def parse_and_validate(content):
@@ -413,7 +445,7 @@ def parse_and_validate(content):
                     break
                 it["score"] = round(float(sc))
     if err:
-        raise ValueError(f"校验失败: {err}\n原始返回:\n{content[:600]}")
+        raise OutputError(f"校验失败: {err}\n原始返回:\n{content[:600]}")
     # tension 是展示用的弱字段：模型没给或给了越界值也不该让整轮生成失败，夹到 1-9
     try:
         t = int(obj.get("tension"))
@@ -428,7 +460,7 @@ def parse_and_validate(content):
     return obj
 
 
-EXIT_BUSY = 75          # 拿不到跨进程生成锁：调用方据此回「已有生成任务在跑」
+
 
 
 def _last_suggestion(path):

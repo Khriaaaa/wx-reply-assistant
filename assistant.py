@@ -76,6 +76,11 @@ def spawn(name, cmd, pids, logdir=None):
     log = (logdir or (STORE / "logs"))
     log.mkdir(parents=True, exist_ok=True)
     f = open(log / f"{name}.log", "ab", buffering=0)
+    try:
+        # 日志里有聊天片段（generate 的 stderr 原文、模型返回），别让同机别人看
+        os.chmod(log / f"{name}.log", 0o600)
+    except OSError:
+        pass
     # 脱离当前进程：Windows 用 DETACHED_PROCESS，POSIX 用 start_new_session
     kw = ({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS}
           if IS_WIN else {"start_new_session": True})
