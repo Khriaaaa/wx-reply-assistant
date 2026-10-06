@@ -1,8 +1,11 @@
 ﻿# setup-windows.ps1 —— Windows 侧环境体检 / 补齐（微信跑在这台机器上时）
 #
-# 用法：在 Windows 上以管理员身份打开 PowerShell，然后
-#   powershell -NoProfile -ExecutionPolicy Bypass -File setup-windows.ps1
-#   powershell -NoProfile -ExecutionPolicy Bypass -File setup-windows.ps1 -Auto
+# 两种用法：
+#   1) 源码方式（在 Windows 上以管理员身份开 PowerShell）
+#        powershell -NoProfile -ExecutionPolicy Bypass -File setup-windows.ps1
+#        powershell -NoProfile -ExecutionPolicy Bypass -File setup-windows.ps1 -Auto
+#   2) 编译成 exe 双击（scripts/dist/wxreply-setup.exe，用 ps2exe 打）
+#        双击即跑；没有控制台时自动改用窗口把结果摆出来，中文不会乱码，能选中复制
 #
 #   不加 -Auto：只体检，缺什么打印一条装它的命令，不动系统
 #   加   -Auto：缺什么就装什么（下载 PsExec64 / winapp CLI），并关掉睡眠
@@ -13,20 +16,34 @@ param(
     [string]$WorkDir   = 'C:\dl\wxc',
     [string]$WinappDir = 'C:\winapp-cli',
     [string]$Psexec    = 'C:\dl\PsExec64.exe',
-    [switch]$Auto
+    [switch]$Auto,
+    [switch]$Gui
 )
 
 $ErrorActionPreference = 'Continue'
 $rows = @()
 
+# 有没有控制台？编译成 exe（-noConsole）双击跑时没有，这时结果走窗口显示。
+# 访问 [Console]::WindowWidth 在无控制台进程里会抛「句柄无效」。
+$HasConsole = $true
+try { $null = [Console]::WindowWidth } catch { $HasConsole = $false }
+if (-not $HasConsole) { $Gui = $true }
+
+# 所有输出都过这一层：有控制台就写控制台，同时攒着给窗口显示用。
+$script:buf = New-Object System.Collections.ArrayList
+function Say([string]$msg, [string]$color = 'Gray') {
+    $script:buf.Add($msg) | Out-Null
+    if ($HasConsole) { Write-Host $msg -ForegroundColor $color }
+}
+
 function Add-Row([string]$Item, [string]$State, [string]$Detail) {
     $script:rows += [pscustomobject]@{ 项目 = $Item; 状态 = $State; 说明 = $Detail }
 }
 
-function Write-Step([string]$msg) { Write-Host "`n=== $msg" -ForegroundColor Cyan }
+function Write-Step([string]$msg) { Say "`n=== $msg" 'Cyan' }
 
 # ---------------------------------------------------------------- 会话
-Write-Host '微信回复助手 · Windows 侧环境体检' -ForegroundColor Green
+Say '微信回复助手 · Windows 侧环境体检' 'Green'
 $sid = (Get-Process -Id $PID).SessionId
 Add-Row '当前会话' $(if ($sid -eq 1) { 'ok' } else { '注意' }) "session $sid"
 
@@ -55,7 +72,7 @@ if ($winapp) {
     $ver = (& $winapp --version 2>&1 | Select-Object -First 1)
     Add-Row 'winapp' 'ok' "$winapp（版本 $ver）"
 } elseif ($Auto) {
-    Write-Host '  正在从 GitHub Releases 取 winappcli-x64.zip ...' -ForegroundColor Yellow
+    Say '  正在从 GitHub Releases 取 winappcli-x64.zip ...' 'Yellow'
     try {
         $rel = Invoke-RestMethod -UseBasicParsing -TimeoutSec 60 `
                -Uri 'https://api.github.com/repos/microsoft/winappCli/releases/latest' `
@@ -63,7 +80,7 @@ if ($winapp) {
         $asset = $rel.assets | Where-Object { $_.name -match 'x64\.zip$' } | Select-Object -First 1
         if (-not $asset) { throw "release $($rel.tag_name) 里没有 x64 zip 资产" }
         $zip = Join-Path $env:TEMP $asset.name
-        Write-Host "  $($asset.name)  $([math]::Round($asset.size/1MB,1)) MB" -ForegroundColor Yellow
+        Say "  $($asset.name)  $([math]::Round($asset.size/1MB,1)) MB" 'Yellow'
         Invoke-WebRequest -UseBasicParsing -TimeoutSec 1800 -Uri $asset.browser_download_url -OutFile $zip
         if (-not (Test-Path $WinappDir)) { New-Item -ItemType Directory -Path $WinappDir -Force | Out-Null }
         Expand-Archive -Path $zip -DestinationPath $WinappDir -Force
@@ -81,10 +98,10 @@ if ($winapp) {
     }
 } else {
     Add-Row 'winapp' 'FAIL' "没找到 —— 期望 $WinappDir\winapp.exe 或在 PATH 里"
-    Write-Host '  装法（任选一种）：' -ForegroundColor Yellow
-    Write-Host '    winget install Microsoft.winappcli --source winget'
-    Write-Host '    或到 https://github.com/microsoft/winappCli/releases/latest 下 winappcli-x64.zip 解压'
-    Write-Host '    想让它自己装：加 -Auto 重跑'
+    Say '  装法（任选一种）：' 'Yellow'
+    Say '    winget install Microsoft.winappcli --source winget'
+    Say '    或到 https://github.com/microsoft/winappCli/releases/latest 下 winappcli-x64.zip 解压'
+    Say '    想让它自己装：加 -Auto 重跑'
 }
 
 # ---------------------------------------------------------------- PsExec64
@@ -95,7 +112,7 @@ if (Test-Path $Psexec) {
     try {
         $dir = Split-Path $Psexec -Parent
         if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
-        Write-Host '  正在从 live.sysinternals.com 取 PsExec64.exe ...' -ForegroundColor Yellow
+        Say '  正在从 live.sysinternals.com 取 PsExec64.exe ...' 'Yellow'
         Invoke-WebRequest -UseBasicParsing -TimeoutSec 300 `
             -Uri 'https://live.sysinternals.com/PsExec64.exe' -OutFile $Psexec
         if (Test-Path $Psexec) {
@@ -108,7 +125,7 @@ if (Test-Path $Psexec) {
     }
 } else {
     Add-Row 'PsExec64' 'FAIL' "没找到 $Psexec"
-    Write-Host '  想让它自己装：加 -Auto 重跑（从 live.sysinternals.com 取）' -ForegroundColor Yellow
+    Say '  想让它自己装：加 -Auto 重跑（从 live.sysinternals.com 取）' 'Yellow'
 }
 
 # ---------------------------------------------------------------- 工作目录
@@ -144,7 +161,7 @@ try {
                 powercfg /change disk-timeout-ac 0    | Out-Null
                 Add-Row '睡眠' '已改' '交流电下睡眠/关屏/关盘全部设为「从不」'
             } else {
-                Write-Host '  改法：powercfg /change standby-timeout-ac 0（加 -Auto 会自动改）' -ForegroundColor Yellow
+                Say '  改法：powercfg /change standby-timeout-ac 0（加 -Auto 会自动改）' 'Yellow'
             }
         }
     } else {
@@ -188,17 +205,76 @@ foreach ($r in $rows) {
     $color = switch ($mark) { '[ok]' { 'Green' } '[!!]' { 'Red' } default { 'Yellow' } }
     # 整行一次写出去 —— Write-Host -NoNewline 分段写的话，
     # Start-Transcript / 重定向到文件时每段会被记成一行，文件里就散架了
-    Write-Host ('  ' + $mark + '  ' + (Pad-Disp $r.项目 16) + $r.说明) -ForegroundColor $color
+    Say ('  ' + $mark + '  ' + (Pad-Disp $r.项目 16) + $r.说明) $color
 }
-Write-Host ''
+Say ''
 $extra = @($rows | Where-Object { $_.状态 -in @('已装', '已建', '已改') })
-if ($extra.Count -gt 0) { Write-Host "本次改了 $($extra.Count) 处（看上面标 [ok] 且说明里写了装/建/改的行）。" }
+if ($extra.Count -gt 0) { Say "本次改了 $($extra.Count) 处（看上面标 [ok] 且说明里写了装/建/改的行）。" }
 
 $bad = @($rows | Where-Object { $_.状态 -eq 'FAIL' })
 if ($bad.Count -eq 0) {
-    Write-Host '没有 FAIL 项。接着把 NAS 侧的 config.local.yaml 填好，就能开采集。' -ForegroundColor Green
-    Write-Host '（别忘了微信本身要登录着，并且打开一个会话）' -ForegroundColor Gray
+    Say '没有 FAIL 项。接着把 NAS 侧的 config.local.yaml 填好，就能开采集。' 'Green'
+    Say '（别忘了微信本身要登录着，并且打开一个会话）'
 } else {
-    Write-Host "$($bad.Count) 项 FAIL，看上面说明那一列。" -ForegroundColor Yellow
-    Write-Host '不加 -Auto 重跑一次可以只体检；缺工具时用 -Auto 让它自己装。' -ForegroundColor Gray
+    Say "$($bad.Count) 项 FAIL，看上面说明那一列。" 'Yellow'
+    Say '不加 -Auto 重跑一次可以只体检；缺工具时用 -Auto 让它自己装。'
 }
+
+# ---------------------------------------------------------------- 窗口显示（没有控制台时）
+if (-not $Gui) { return }
+
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+[System.Windows.Forms.Application]::EnableVisualStyles()
+
+$form            = New-Object System.Windows.Forms.Form
+$form.Text       = if ($bad.Count -eq 0) { '微信回复助手 · 环境体检 —— 全部通过' } else { "微信回复助手 · 环境体检 —— 有 $($bad.Count) 项要处理" }
+$form.Size       = New-Object System.Drawing.Size(820, 560)
+$form.StartPosition = 'CenterScreen'
+$form.FormBorderStyle = 'Sizable'
+
+$box             = New-Object System.Windows.Forms.TextBox
+$box.Multiline   = $true
+$box.ReadOnly    = $true
+$box.ScrollBars  = 'Both'
+$box.WordWrap     = $false
+$box.Dock        = 'Fill'
+foreach ($fname in 'Microsoft YaHei UI', 'Microsoft YaHei', 'SimSun') {
+    try { $box.Font = New-Object System.Drawing.Font($fname, 10); break } catch { }
+}
+$box.Text        = ($script:buf -join "`r`n")
+$box.Select(0, 0)
+
+$bar             = New-Object System.Windows.Forms.FlowLayoutPanel
+$bar.Dock        = 'Bottom'
+$bar.Height      = 46
+$bar.FlowDirection = 'RightToLeft'
+$bar.Padding     = New-Object System.Windows.Forms.Padding(8)
+
+$btnClose        = New-Object System.Windows.Forms.Button
+$btnClose.Text   = '关闭'
+$btnClose.Width  = 96
+$btnClose.Add_Click({ $form.Close() })
+
+$btnCopy         = New-Object System.Windows.Forms.Button
+$btnCopy.Text    = '复制结果'
+$btnCopy.Width   = 96
+$btnCopy.Add_Click({ [System.Windows.Forms.Clipboard]::SetText($box.Text) })
+
+# 缺东西时给个按钮，直接重跑自己（带 -Auto）—— 双击用户的出口
+$btnAuto         = New-Object System.Windows.Forms.Button
+$btnAuto.Text    = '自动补齐缺的（-Auto）'
+$btnAuto.Width   = 170
+$btnAuto.Enabled = ($bad.Count -gt 0)
+$btnAuto.Add_Click({
+    $self = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+    Start-Process -FilePath $self -ArgumentList '-Auto' -Verb RunAs
+})
+
+$bar.Controls.Add($btnClose)
+$bar.Controls.Add($btnCopy)
+$bar.Controls.Add($btnAuto)
+$form.Controls.Add($box)
+$form.Controls.Add($bar)
+$form.Add_Shown({ $form.Activate() })
+[void]$form.ShowDialog()

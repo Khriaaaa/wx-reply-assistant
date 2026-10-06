@@ -38,6 +38,26 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-windows.ps1 -A
 
 ## 2 Windows 侧
 
+### 2.0 一条捷径：双击那个 exe
+
+嫌下面几步手动敲命令麻烦，就双击 **`wxreply-setup.exe`** —— 它把 2.1 / 2.2 / 2.3 要做的事
+一次跑完，把结果摆在一个窗口里：
+
+- 逐项体检：QEMU guest agent、winapp CLI、PsExec64、工作目录、电源（别睡眠）、微信窗口
+- 缺什么就说缺什么并给出手动装的命令；缺工具时按窗口上的 **「自动补齐缺的（-Auto）」**
+  按钮，它会自己去 GitHub Releases 下 winapp CLI（~94 MB）、从 live.sysinternals.com 下
+  PsExec64，并把睡眠/关屏/关盘设成「从不」
+- 双击时会弹一次 UAC —— 改电源计划和写 `C:\dl` 都要管理员，这是正常的
+- 没签名，第一次跑可能被 SmartScreen 拦（「更多信息」→「仍要运行」），杀软
+  也可能提示「未知发布者」。源码就是 `scripts/setup-windows.ps1`，不放心可以自己编：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build-exe.ps1
+# 产出 scripts\dist\wxreply-setup.exe（要用 ps2exe，会从 PSGallery 装）
+```
+
+不想用 exe 就走下面 2.1 起的手动流程，或者直接跑那个 .ps1 也一样。
+
 ### 2.1 让屏幕别睡
 
 读屏靠 UIA 加截图，锁屏、最小化、睡眠都读不到。虚拟机里把电源计划改成「从不睡眠」，

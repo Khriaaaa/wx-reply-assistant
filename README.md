@@ -77,6 +77,9 @@ store/         运行期数据（聊天记录、建议、截图）—— 不进�
 `ui scroll` / `ui screenshot`）。
 
 ```bash
+# 0. Windows 侧（微信跑在那台机器上）：双击 wxreply-setup.exe 体检 + 补齐
+#    没带这个文件的话，源码在 scripts/setup-windows.ps1，打包法在 scripts/build-exe.ps1
+
 # 1. 虚机连接参数（不进仓库）
 cp config.example.yaml config.local.yaml   # 填 ssh / qga_uuid
 
