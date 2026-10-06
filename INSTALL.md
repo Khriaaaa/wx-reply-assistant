@@ -9,10 +9,11 @@ README 里的「快速开始」只有五步 —— 因为它假设你已经有�
 bash scripts/install.sh --demo     # venv + 依赖 + config.local.yaml + 语法自检 + 演示数据
 ```
 
-Windows 侧（`-Auto` 缺什么装什么；不加就只体检）：
+Windows 侧（默认体检完，缺什么就自己在后台下什么；加 `-NoAuto` 才是只体检）：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-windows.ps1 -Auto
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-windows.ps1
+# 只想体检、不让它动系统：  ... -File scripts/setup-windows.ps1 -NoAuto
 ```
 
 下面每节讲的是它们做了什么，以及它们不做的那部分。
@@ -44,9 +45,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-windows.ps1 -A
 一次跑完，把结果摆在一个窗口里：
 
 - 逐项体检：QEMU guest agent、winapp CLI、PsExec64、工作目录、电源（别睡眠）、微信窗口
-- 缺什么就说缺什么并给出手动装的命令；缺工具时按窗口上的 **「自动补齐缺的（-Auto）」**
-  按钮，它会自己去 GitHub Releases 下 winapp CLI（~94 MB）、从 live.sysinternals.com 下
-  PsExec64，并把睡眠/关屏/关盘设成「从不」
+- **缺什么就自己下什么**，不用你点：窗口一出来就开始下 GitHub Releases 上的 winapp CLI
+  （~94 MB）和 live.sysinternals.com 上的 PsExec64，底下有进度条；下完自动重新体检一遍，
+  标题从「有 N 项要处理」变成「全部通过」。睡眠/关屏/关盘也会顺手设成「从不」
+- 不想让它动系统就加 `-NoAuto`（只体检、只报缺什么）；下载源要换成镜像或内网，
+  用 `-WinappUrl` / `-PsexecUrl` 指过去
 - 双击时会弹一次 UAC —— 改电源计划和写 `C:\dl` 都要管理员，这是正常的
 - 没签名，第一次跑可能被 SmartScreen 拦（「更多信息」→「仍要运行」），杀软
   也可能提示「未知发布者」。源码就是 `scripts/setup-windows.ps1`，不放心可以自己编：
@@ -77,7 +80,8 @@ winapp --cli-schema                # 想看完整命令表，这个是机器可�
 `winget` 不是每台 Windows 都有（实测那台 Win10 就没带 App Installer）。
 没有就走压缩包：[GitHub Releases](https://github.com/microsoft/WinAppCli/releases/latest)
 下 `winappcli-x64.zip`（约 94 MB），解压到 `C:\winapp-cli`。
-**或者干脆交给 `scripts/setup-windows.ps1 -Auto`，它会去 Releases 取最新版并解压好。**
+**或者干脆交给 `scripts/setup-windows.ps1`（默认行为），它会去 Releases 取最新版、解压好；
+国内拉不动 GitHub 时用 `-WinappUrl <镜像地址>` 换源。**
 官方仍在 public preview，命令可能会变；UI 那部分的文档在
 [Microsoft Learn](https://learn.microsoft.com/en-us/windows/apps/dev-tools/winapp-cli/ui-automation)。
 
