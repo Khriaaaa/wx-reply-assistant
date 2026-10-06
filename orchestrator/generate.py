@@ -39,8 +39,10 @@ elif (ROOT / "config.local.yaml").exists():
 # 传 --provider none 可回退到 config.yaml 的 model.default + fallback_providers。
 # 2026-10-05 起用 mimo-v2.6-flash：带推理、直接出 JSON，不受 commandcode 5 小时窗口影响。
 # 想要更强的用 --model mimo-v2.6-pro（实测 9.0s / 181 out tok，flash 是 5.7s / 115）。
-LEAD_PROVIDER = "custom:mimoplan"
-LEAD_MODEL = "mimo-v2.6-flash"
+# 换成自己的 provider / 模型：设 WXREPLY_LEAD_PROVIDER / WXREPLY_LEAD_MODEL。
+# provider 名的写法跟 config.yaml 里 provider 段的键一致（形如 custom:xxx）。
+LEAD_PROVIDER = os.environ.get("WXREPLY_LEAD_PROVIDER", "custom:mimoplan")
+LEAD_MODEL = os.environ.get("WXREPLY_LEAD_MODEL", "mimo-v2.6-flash")
 
 # 整条候选链的总时间预算（秒），可用 WXREPLY_BUDGET 覆盖。
 # 链上每个 provider 的单发超时是 120s，链长 4 个时最坏 480s —— 比调用方的

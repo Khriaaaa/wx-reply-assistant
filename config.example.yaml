@@ -8,3 +8,8 @@ vm:
   ssh: user@nas-host            # NAS 上能 sudo virsh 的账号
   ssh_pw: ""                    # 留空则走 ssh 公钥认证
   qga_uuid: ""                  # 虚机 UUID（virsh list --all 能查到）
+
+# 生成候选用哪个模型，另外两个环境变量说了算（不设就用程序里的默认值）：
+#   WXREPLY_LEAD_PROVIDER   provider 名，写法同 config.yaml 里 provider 段的键（custom:xxx）
+#   WXREPLY_LEAD_MODEL      模型名
+# 整条候选链的总时间预算：WXREPLY_BUDGET（秒，默认 150）

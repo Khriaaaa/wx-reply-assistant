@@ -1,0 +1,9 @@
+# 运行所需（其余全是 Python 标准库）
+# 只跑界面/编排、不连虚机的话，三个包都装好即可
+pillow>=9.0          # 裁气泡横带、判发送方
+numpy>=1.21          # 像素统计
+pyyaml>=5.4          # 读 config.local.yaml
+
+# 系统层面还需要（不在 pip 里）：
+#   sshpass   —— 用口令 ssh 到跑虚机的那台宿主；走公钥认证就不需要
+#   宿主侧能 sudo virsh —— 命令是通过 qemu-agent-command 送进 Windows 的

@@ -80,23 +80,31 @@ store/         运行期数据（聊天记录、建议、截图）—— 不进�
 > 每一步怎么确认成功 —— 都在 **[INSTALL.md](INSTALL.md)**。
 
 ```bash
+# 0. 环境：建 .venv、装依赖、生成 config.local.yaml、语法自检
+#    --demo 顺便造一份合成演示数据，不用连虚机就能看到界面
+bash scripts/install.sh --demo
+
 # 1. 虚机连接参数（不进仓库）
-cp config.example.yaml config.local.yaml   # 填 ssh / qga_uuid
+$EDITOR config.local.yaml                  # 填 ssh / qga_uuid
 
 # 2. 面板与生成用的模型：需要一个 OpenAI 兼容的 /chat/completions 端点
-#    默认读 /opt/data/config.yaml，可用 WXREPLY_CONFIG 指向别处，
-#    或在项目根放 config.local.yaml 覆盖（见 orchestrator/generate.py 顶部）
+#    默认读 /opt/data/config.yaml，可用 WXREPLY_CONFIG 指向别处；
+#    换模型用 WXREPLY_LEAD_PROVIDER / WXREPLY_LEAD_MODEL
+#    （见 orchestrator/generate.py 顶部）
 
-# 3. 先看看界面长什么样（合成数据）
-python3 tools/make_demo_store.py --out store
-
-# 4. 起面板
-python3 web/server.py --port 8801
+# 3. 起面板看效果（--no-collector = 不连虚机）
+.venv/bin/python3 assistant.py up --port 8801 --no-collector
 #    首次启动会生成随机密码，写在 store/.panel_password
 
-# 5. 真采集（虚机侧要能读到微信窗口）
-python3 collector/wx_collector.py start
-python3 collector/wx_collector.py status
+# 4. 真采集（虚机侧要能读到微信窗口）
+.venv/bin/python3 assistant.py up          # 采集 + 自动生成 + 面板 一把起
+.venv/bin/python3 assistant.py status
+```
+
+Windows 那侧的 winapp CLI、PsExec64、guest agent、电源设置，一条命令体检加补齐：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-windows.ps1 -Auto
 ```
 
 采集器不用面板也能跑；面板自己带自检线程，发现对方来了新消息就重新生成一轮。

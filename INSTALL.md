@@ -3,6 +3,20 @@
 README 里的「快速开始」只有五步 —— 因为它假设你已经有一个「能读 UIA 的 Windows」。
 这份教程把那半边补上：从一台装着微信的机器，到网页上出现三条候选。
 
+不想逐节读的话，两个脚本会把环境准备好。Linux/NAS 侧：
+
+```bash
+bash scripts/install.sh --demo     # venv + 依赖 + config.local.yaml + 语法自检 + 演示数据
+```
+
+Windows 侧（`-Auto` 缺什么装什么；不加就只体检）：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-windows.ps1 -Auto
+```
+
+下面每节讲的是它们做了什么，以及它们不做的那部分。
+
 ## 0 装的是什么，装在哪
 
 | 部分 | 跑在哪 | 干什么 |
@@ -40,9 +54,11 @@ winapp --help                      # 装完验一下
 winapp --cli-schema                # 想看完整命令表，这个是机器可读的
 ```
 
-官方仍在 public preview，命令可能会变；装不上就用
-[GitHub Releases](https://github.com/microsoft/WinAppCli/releases/latest) 的压缩包解压到
-`C:\winapp-cli`。UI automation 那部分的文档在
+`winget` 不是每台 Windows 都有（实测那台 Win10 就没带 App Installer）。
+没有就走压缩包：[GitHub Releases](https://github.com/microsoft/WinAppCli/releases/latest)
+下 `winappcli-x64.zip`（约 94 MB），解压到 `C:\winapp-cli`。
+**或者干脆交给 `scripts/setup-windows.ps1 -Auto`，它会去 Releases 取最新版并解压好。**
+官方仍在 public preview，命令可能会变；UI 那部分的文档在
 [Microsoft Learn](https://learn.microsoft.com/en-us/windows/apps/dev-tools/winapp-cli/ui-automation)。
 
 要用到的就这几个命令：
