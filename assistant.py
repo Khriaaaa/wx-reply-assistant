@@ -112,7 +112,7 @@ def cmd_up(a):
     if not a.no_collector:
         spawn("sync", [PY, str(COLLECTOR), "sync", "--quiet"], pids)
 
-    spawn("panel", [PY, str(SERVER), "--port", str(a.port)], pids)
+    spawn("panel", [PY, str(SERVER), "--port", str(a.port), "--lan"], pids)
 
     time.sleep(3)
     try:

@@ -81,7 +81,7 @@ def new_incoming(store, seen):
         key = fp_of(m)
         if key is None or key in seen:
             continue
-        seen.add(key)
+        seen[key] = None          # 有序：save_seen 截断时丢的才是最旧的
         if m.get("sender") == "them":
             fresh.append(m)
             by_sess.setdefault(m.get("session"), []).append(key)
@@ -125,17 +125,25 @@ def write_status(store, **kw):
 
 
 def load_seen(store):
-    """已见指纹落盘，这样 watch 重启（或 --once 分次跑）不会把离线期间的消息漏掉。"""
+    """已见指纹落盘，这样 watch 重启（或 --once 分次跑）不会把离线期间的消息漏掉。
+
+    返回 dict（Python 3.7+ 保持插入顺序）而不是 set：见 save_seen。
+    """
     path = store / "watcher_seen.json"
     if path.exists():
         try:
-            return set(json.loads(path.read_text(encoding="utf-8")))
+            return {k: None for k in json.loads(path.read_text(encoding="utf-8"))}
         except Exception:
             pass
     return None
 
 
 def save_seen(store, seen, cap=2000):
+    """落盘已见指纹，只留最近 cap 条。
+
+    seen 必须是有序的（dict / deque），否则 list(seen)[-cap:] 截掉的是随机项：
+    被截掉的老指纹下一轮会被当成新消息，重复触发一轮生成。以前这里踩过。
+    """
     path = store / "watcher_seen.json"
     items = list(seen)[-cap:]
     tmp = path.with_suffix(".json.tmp")
@@ -159,17 +167,17 @@ def main():
     seen = load_seen(store)
     if seen is None:
         # 首次跑（或状态文件读坏）：把已有消息全记成已见，历史的不会触发
-        seen = set()
+        seen = {}
         for _idx, m in read_messages(store / "messages.jsonl"):
             k = fp_of(m)
             if k:
-                seen.add(k)
+                seen[k] = None
         save_seen(store, seen)
     # seen = 内存里「已扫过」的指纹；done = 已确认、可以落盘的指纹。
     # 两者分开是为了「待生成」的行不被提前写盘：只有生成成功、或本来就不需要
     # 触发的行（我方消息/未知发送方）才进 done。watch 若在待生成期间被杀，
     # 重启后这些行仍然是「没见过」，不会静默丢掉。
-    done = set(seen)
+    done = dict(seen)
     if a.verbose:
         print(f"[watch] 起步已见 {len(seen)} 条", file=sys.stderr)
 
@@ -182,7 +190,8 @@ def main():
         if time.time() >= retry_at:
             fresh, by_sess, others = new_incoming(store, seen)
             if others:
-                done.update(others)                  # 我方消息 / 未知发送方：不触发，直接确认
+                for k in others:                     # 我方消息 / 未知发送方：不触发，直接确认
+                    done[k] = None
             if fresh:
                 for s, ks in by_sess.items():        # 每个会话都要生成，不能只留最后一个
                     if s and s not in pending_sessions:
@@ -205,14 +214,15 @@ def main():
                 # 生成超时/子进程异常以前会直接击穿 while，watch 静默死掉、自动生成从此停摆
                 ok, info = False, ("%s: %s" % (type(e).__name__, e))[:400]
             if ok:
-                done.update(pending.pop(sess, []))   # 只有成功才把这一批指纹落盘
+                for k in pending.pop(sess, []):      # 只有成功才把这一批指纹落盘
+                    done[k] = None
                 save_seen(store, done)
             else:
                 # 失败：只撤回**这个会话**的指纹，别的会话不受影响（它们的指纹本来
                 # 就没进 done，下一轮照常生成）。撤回后这批消息下一轮还是「新消息」，
                 # 于是会被重试，而不是被静默丢掉。
                 for k in pending.pop(sess, []):
-                    seen.discard(k)
+                    seen.pop(k, None)
                 # 注意不要在这里把 sess 塞回 pending_sessions：那样下一轮 debounce
                 # 一到就会立刻重跑（绕过 retry 间隔），失败一次变成连跑两次。
                 # 它的指纹已经从 seen 撤掉，retry 到点后重扫时自然会被当成新消息再进来。

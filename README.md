@@ -91,7 +91,7 @@ cp config.example.yaml config.local.yaml   # 填 ssh / qga_uuid
 python3 tools/make_demo_store.py --out store
 
 # 4. 起面板
-python3 web/server.py --port 8801
+python3 web/server.py --port 8801 --lan   # 默认只监听本机；要手机/别的机器访问就加 --lan
 #    首次启动会生成随机密码，写在 store/.panel_password
 
 # 5. 真采集（虚机侧要能读到微信窗口）

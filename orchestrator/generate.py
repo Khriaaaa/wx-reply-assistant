@@ -83,9 +83,75 @@ LEAD_MODEL = os.environ.get("WXREPLY_LEAD_MODEL", BUNDLED_LEAD[1])
 BUDGET_SEC = float(os.environ.get("WXREPLY_BUDGET", "150"))
 
 
+def pick_session(msgs):
+    """要回的是「最后一条对方消息」所在的会话。
+
+    这条规则必须只有一份：面板展示的会话、面板自检决定生成哪个会话、generate 自己
+    算 session，三处以前各写各的 —— 面板取 msgs[-1]（最后一条不论谁发的），于是
+    「我刚在 B 会话回了一句」会让面板切到 B，而 A 会话的新消息生成的建议被
+    按会话过滤掉，界面上就成了「明明有建议却显示还没有生成」。
+    没有对方消息时退回最后一条消息的会话。
+    """
+    for m in reversed(msgs):
+        if not isinstance(m, dict):
+            continue
+        if m.get("sender") == "them" and m.get("session"):
+            return m["session"]
+    for m in reversed(msgs):
+        if isinstance(m, dict) and m.get("session"):
+            return m["session"]
+    return None
+
+
 def die(msg, code=1):
     print(msg, file=sys.stderr)
     sys.exit(code)
+
+
+class GenLock:
+    """跨进程互斥：面板自检线程、面板手动「生成」、watch.py 是三路人马。
+
+    server.py 里那把 threading.Lock 只在面板自己的进程内有效，watch.py 是另一个
+    进程、拿 subprocess 直接拉 generate，于是同一条新消息会被两边各生成一次，
+    suggestions.jsonl 里多一条近重复记录、白烧一次模型额度。锁放在 store 下，
+    谁要生成都得先拿到它。非阻塞：拿不到说明别人正在跑，直接退出（退出码 75），
+    让调用方去报「已有生成任务在跑」，而不是排队再跑一遍。
+    """
+
+    def __init__(self, store=None):
+        self.path = Path(store or STORE) / ".gen.lock"
+        self.f = None
+
+    def __enter__(self):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.f = open(self.path, "a+")
+        try:
+            if os.name == "nt":
+                import msvcrt
+                msvcrt.locking(self.f.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(self.f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            self.f.close()
+            self.f = None
+            die("另一处正在生成（store/.gen.lock 被别人拿着），这次不重复跑", code=EXIT_BUSY)
+        return self
+
+    def __exit__(self, *exc):
+        try:
+            if self.f is not None:
+                if os.name == "nt":
+                    import msvcrt
+                    msvcrt.locking(self.f.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(self.f.fileno(), fcntl.LOCK_UN)
+                self.f.close()
+        except Exception:
+            pass
+        self.f = None
+        return False
 
 
 def load_messages(path=None):
@@ -262,14 +328,16 @@ def call_llm(prompt_text, verbose, override=None, budget=None):
     for label, base, key, model in load_providers(override):
         left = deadline - time.monotonic()
         if left <= 2:            # 剩不到 2 秒就发出去也只会超时，直接跳过
-
             errors.append(f"  - {label} / {model}: 跳过（总预算 {budget:.0f}s 已用完）")
             continue
         try:
             content = _try_one(base, key, model, prompt_text, verbose, timeout=min(120.0, left))
+            # 校验也留在这个 try 里：返回 200 但 JSON 不合规（弱模型最常见的坏法）
+            # 同样算这个 provider 失败，接着试下一个，而不是整轮 die 掉。
+            obj = parse_and_validate(content)
             if verbose and errors:
                 print(f"[verbose] 主 provider 失败、已降级到 {label}/{model}", file=sys.stderr)
-            return content, label, model
+            return obj, label, model
         except Exception as e:
             errors.append(f"  - {label} / {model}: {e}")
             if verbose:
@@ -277,14 +345,36 @@ def call_llm(prompt_text, verbose, override=None, budget=None):
     die("所有 provider 都失败了:\n" + "\n".join(errors))
 
 
-def parse_and_validate(content):
+def extract_json(content):
+    """从模型返回里挖出那个 JSON 对象。
+
+    只剥首尾代码围栏不够用：模型很爱在前面垫一句「好的，以下是回复建议」、后面
+    再补一句「希望有帮助」，json.loads 直接挂。所以先按围栏剥，再退到「第一个 {
+    到最后一个 }」。都挖不出来才抛，异常里带原始返回，方便看是谁家的坏毛病。
+    """
     s = content.strip()
     s = re.sub(r"^```(?:json)?\s*", "", s)
     s = re.sub(r"\s*```$", "", s).strip()
     try:
-        obj = json.loads(s)
-    except json.JSONDecodeError as e:
-        die(f"JSON 解析失败: {e}\n原始返回:\n{content}")
+        return json.loads(s)
+    except json.JSONDecodeError:
+        i, j = s.find("{"), s.rfind("}")
+        if 0 <= i < j:
+            try:
+                return json.loads(s[i:j + 1])
+            except json.JSONDecodeError:
+                pass
+        raise ValueError(f"JSON 解析失败，原始返回:\n{content[:600]}") from None
+
+
+def parse_and_validate(content):
+    """解析 + 校验；失败一律抛异常（不是 die）。
+
+    外层 call_llm 靠这个异常决定「换下一个 provider」——以前这里是 die()，于是
+    备用模型只在网络报错时救场，遇到「200 但 JSON 不合规」这个最常见的坏返回反而
+    直接退出，配了备用模型也白配。
+    """
+    obj = extract_json(content)
     err = None
     if not isinstance(obj, dict):
         err = "顶层不是对象"
@@ -306,20 +396,53 @@ def parse_and_validate(content):
                 if "\n" in t or "\r" in t:
                     err = f"candidates[{i}].text 含换行"
                     break
+                # score 得是数字：模型给过 "80%"，面板 Math.round("80%") 会显示 NaN。
+                # 数字字符串宽容接受（"80" / "80%"），其它一律判坏。
+                sc = it["score"]
+                if isinstance(sc, str):
+                    try:
+                        sc = float(sc.strip().rstrip("%").strip())
+                    except ValueError:
+                        err = f"candidates[{i}].score 不是数字（{it['score']!r}）"
+                        break
+                if isinstance(sc, bool) or not isinstance(sc, (int, float)):
+                    err = f"candidates[{i}].score 不是数字（{it['score']!r}）"
+                    break
+                if not (0 <= sc <= 100):
+                    err = f"candidates[{i}].score 越界（{it['score']!r}）"
+                    break
+                it["score"] = round(float(sc))
     if err:
-        die(f"校验失败: {err}\n原始返回:\n{content}")
+        raise ValueError(f"校验失败: {err}\n原始返回:\n{content[:600]}")
     # tension 是展示用的弱字段：模型没给或给了越界值也不该让整轮生成失败，夹到 1-9
     try:
         t = int(obj.get("tension"))
     except (TypeError, ValueError):
         t = 5
     obj["tension"] = max(1, min(9, t))
+    # 面板把第一条当「推荐回复」，所以按分数降序排一遍（模型偶尔不按高到低给）
+    try:
+        obj["candidates"].sort(key=lambda x: x.get("score") or 0, reverse=True)
+    except Exception:
+        pass
     return obj
+
+
+EXIT_BUSY = 75          # 拿不到跨进程生成锁：调用方据此回「已有生成任务在跑」
+
+
+def _last_suggestion(path):
+    """已落盘的最后一条建议；读不出来就当没有（去重判断用，坏了不能挡住生成）"""
+    try:
+        lines = [l for l in Path(path).read_text(encoding="utf-8").splitlines() if l.strip()]
+        return json.loads(lines[-1]) if lines else None
+    except Exception:
+        return None
 
 
 def main():
     ap = argparse.ArgumentParser(description="根据微信聊天记录生成 3 条候选回复（不发送）")
-    ap.add_argument("--session", help="会话名，默认取最后一条消息的会话")
+    ap.add_argument("--session", help="会话名，默认取最后一条对方消息的会话")
     ap.add_argument("--limit", type=int, default=20, help="取最近多少条消息，默认 20")
     ap.add_argument("--dry-run", action="store_true", help="只打印 prompt，不调 API")
     ap.add_argument("--provider", default=LEAD_PROVIDER,
@@ -329,28 +452,37 @@ def main():
     ap.add_argument("--messages", help="聊天记录文件，默认 store/messages.jsonl")
     ap.add_argument("--budget", type=float, default=BUDGET_SEC,
                     help=f"整条候选链的总时间预算（秒），默认 {BUDGET_SEC:.0f}")
+    ap.add_argument("--force", action="store_true",
+                    help="同一份记录已经生成过也再来一次（面板手动点「生成」走这个）")
     ap.add_argument("--verbose", action="store_true")
     a = ap.parse_args()
 
     msgs = load_messages(a.messages)
-    # 没指定会话时优先取「最后一条对方消息」的会话：那才是需要回的那条。
-    session = a.session or next(
-        (m.get("session") for m in reversed(msgs)
-         if m.get("sender") == "them" and m.get("session")), msgs[-1].get("session"))
+    session = a.session or pick_session(msgs)     # 规则只此一份，见 pick_session()
     transcript, n, last_fp = build_transcript(msgs, session, a.limit)
     prompt = PROMPT.read_text(encoding="utf-8").rstrip("\n") + "\n\n" + transcript + "\n"
 
     if a.dry_run:
         print(prompt)
         return
-    if a.verbose:
-        print(f"[verbose] session={session} 消息数={n}", file=sys.stderr)
 
-    override = None
-    if a.provider not in ("", "none") and a.model not in ("", "none"):
-        override = (a.provider, a.model)
-    content, label, used_model = call_llm(prompt, a.verbose, override, budget=a.budget)
-    obj = parse_and_validate(content)
+    out = Path(a.out) if a.out else SUGGESTIONS
+    store = Path(a.messages).parent if a.messages else STORE
+    # 跨进程锁 + 「这份记录已经生成过就不再来一遍」。面板自检线程、面板手动生成、
+    # watch.py 三路人马以前各跑各的：同一条消息被生成两次，建议库里多一条近重复，
+    # 还白烧一次额度。--force 是「我知道生成过了，但我要重来」（面板那个按钮）。
+    with GenLock(store):
+        if not a.force:
+            prev = _last_suggestion(out)
+            if prev and prev.get("session") == session and prev.get("source_last_fp") == last_fp:
+                print(f"[skip] {session} 这条（fp {last_fp}）已经生成过，不重复烧模型", file=sys.stderr)
+                return
+        if a.verbose:
+            print(f"[verbose] session={session} 消息数={n}", file=sys.stderr)
+        override = None
+        if a.provider not in ("", "none") and a.model not in ("", "none"):
+            override = (a.provider, a.model)
+        obj, label, used_model = call_llm(prompt, a.verbose, override, budget=a.budget)
     rec = {
         "ts_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "session": session,
@@ -364,7 +496,6 @@ def main():
         "source_msg_count": n,
         "source_last_fp": last_fp,
     }
-    out = Path(a.out) if a.out else SUGGESTIONS
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("a", encoding="utf-8") as f:
         f.write(json.dumps(rec, ensure_ascii=False) + "\n")

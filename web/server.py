@@ -37,7 +37,7 @@ import yaml
 
 WEB = Path(__file__).resolve().parent
 ROOT = WEB.parent
-STORE = ROOT / "store"
+STORE = Path(os.environ.get("WXREPLY_STORE", str(ROOT / "store")))   # 换目录只为了测试
 MESSAGES = STORE / "messages.jsonl"
 SUGGESTIONS = STORE / "suggestions.jsonl"
 HEARTBEAT = STORE / "cache" / "heartbeat.txt"
@@ -95,7 +95,7 @@ def newest_fp():
 
     必须和 generate.py 写进 source_last_fp 的取法完全一致（都取最后一条 them 的 fp）。
     这里先后错过两次：先只认 sender=="them" 而生成侧记的是最后一条（可能是 me），
-    两边永远对不上、每 45 秒白烧一次模型；改成「不论谁说的最后一条」之后，
+    两边永远对不上，每一轮自检都白烧一次模型；改成「不论谁说的最后一条」之后，
     我自己每发一条消息又会让指纹变化、自检再生成一轮 —— 同样没有新的对方消息。
     现在两边都只认 them。
     """
@@ -141,10 +141,8 @@ def check_round():
                     error=None, msgs=len(msgs))
         return False
 
-    # 会话也跟着「最后一条对方消息」走：不然我在 B 会话发了最后一条、A 会话来了新消息时，
-    # 自检会拿 B 去生成（生成的是我已经回过的那边）。
-    session = next((m.get("session") for m in reversed(msgs)
-                    if m.get("sender") == "them" and m.get("session")), None)
+    # 会话规则只此一份：generate.pick_session()（「最后一条对方消息」的会话）
+    session = pick_session(msgs)
     if not _gen_lock.acquire(blocking=False):
         # 手动点了「生成」或上一轮自检还在跑：这轮让出，别两条 generate 并发。
         write_check(last_check_utc=utcnow(), last_result="busy", guest_running=guest_running,
@@ -161,6 +159,10 @@ def check_round():
         return False
     finally:
         _gen_lock.release()
+    if rr.returncode == 75:      # 另一处（watch 或手动点生成）正拿着生成锁，这轮不算错
+        write_check(last_check_utc=utcnow(), last_result="busy", guest_running=guest_running,
+                    guest_started=guest_started, error=None, msgs=len(msgs))
+        return False
     if rr.returncode != 0:
         write_check(last_check_utc=utcnow(), last_result="error", guest_running=guest_running, guest_started=guest_started,
                     error=(rr.stderr or rr.stdout or f"退出码 {rr.returncode}").strip()[-300:])
@@ -221,7 +223,8 @@ def _secret_file(path, nbytes, announce=False, label=""):
     os.chmod(tmp, 0o600)
     os.replace(tmp, path)   # 原子落盘：不会留下写一半的空/半截凭据文件
     if announce:
-        print(f"[panel] 已生成{label}: {val}  (仅此一次显示，之后见 store 下 .panel_password)", flush=True)
+        # 不打印内容：stdout 会被追加进 store/logs/panel.log，等于把口令明文落盘
+        print(f"[panel] 已生成{label or '面板密钥'}，写到 store/{path.name}", flush=True)
     return val
 
 
@@ -251,10 +254,25 @@ def check_cookie(val):
         return False
 
 
+_jsonl_cache = {}       # str(path) -> ((mtime_ns, size), [rows])
+
+
 def read_jsonl(path):
+    """读 jsonl；按 (mtime, size) 缓存解析结果。
+
+    /api/state 每 5 秒来一次，一次要读 messages + suggestions 两遍，watch 每 2 秒
+    也整读一遍 —— 文件没变时重复解析纯属白烧 CPU，文件一大就看得出来。文件被改
+    则 mtime/size 必变，缓存自然失效，不需要谁手动清。
+    """
+    try:
+        st = path.stat()
+        key = (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return []
+    hit = _jsonl_cache.get(str(path))
+    if hit and hit[0] == key:
+        return hit[1]
     out = []
-    if not path.exists():
-        return out
     for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if line:
@@ -262,14 +280,32 @@ def read_jsonl(path):
                 out.append(json.loads(line))
             except json.JSONDecodeError:
                 pass
+    _jsonl_cache[str(path)] = (key, out)
     return out
+
+
+def pick_session(msgs):
+    """会话规则只有一份，在 generate.py 的 pick_session() 里；这里只是转发。
+
+    面板以前自己写了一份（取 msgs[-1]，最后一条不论谁发的），和生成侧（取最后一条
+    对方消息的会话）不一致：我在 B 会话回最后一句，面板就切到 B，而 A 会话新消息
+    生成的建议会被按会话过滤掉，界面上成了「明明有建议却显示还没有生成」。
+    """
+    try:
+        return _gen_mod().pick_session(msgs)
+    except Exception as e:      # 生成侧加载不出来也不能让面板 500
+        print(f"[panel] 取会话失败，退回最后一条消息: {e}", flush=True)
+        for m in reversed(msgs):
+            if isinstance(m, dict) and m.get("session"):
+                return m["session"]
+        return None
 
 
 def state():
     msgs = read_jsonl(MESSAGES)
     recs = read_jsonl(SUGGESTIONS)
     sug = recs[-1] if recs else None
-    session = msgs[-1].get("session") if msgs else (sug or {}).get("session")
+    session = pick_session(msgs) or (sug or {}).get("session")
     # 建议必须属于当前展示的这个会话：手动给别的会话生成过一次之后，
     # 卡片上「对方最近说 / 对话参考 / 候选」会整块错配到另一个人身上（等于给错人出主意）
     if sug and sug.get("session") != session:
@@ -317,11 +353,24 @@ def _load_generate():
     """按文件加载 generate.py，只为复用它那套「候选配置文件」的解析逻辑。
 
     面板自己再写一份的话迟早错开：网页说已配置、生成说找不到 provider。
+    会话规则（pick_session）也走这里，保证展示的会话和生成的会话是同一条规则。
     """
     spec = importlib.util.spec_from_file_location("wx_generate", GENERATE)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
+
+
+_GEN_MOD = None
+
+
+def _gen_mod():
+    """按需加载并缓存 generate 模块：state() 每次轮询都要用它的 pick_session，
+    不能每次重新 exec 一遍两万多字节的源码。"""
+    global _GEN_MOD
+    if _GEN_MOD is None:
+        _GEN_MOD = _load_generate()
+    return _GEN_MOD
 
 
 def read_llm_cfg():
@@ -657,13 +706,18 @@ class H(BaseHTTPRequestHandler):
             cmd = [sys.executable, str(GENERATE)]
             if session:
                 cmd += ["--session", str(session)]
+            # 手动点「生成」的语义是「我知道生成过，但我要重来」，所以带 --force；
+            # 自检和 watch 走「指纹没变就别重复烧」，它们不带这个参数。
+            cmd += ["--force"]
             try:
                 r = subprocess.run(cmd, capture_output=True, text=True, timeout=GEN_TIMEOUT, cwd=str(ROOT))
             except subprocess.TimeoutExpired:
-                return self._send(502, {"error": "生成超时（180 秒）"})
+                return self._send(502, {"error": f"生成超时（{GEN_TIMEOUT:.0f} 秒）"})
             except Exception as e:
                 return self._send(502, {"error": f"{type(e).__name__}: {e}"})
             if r.returncode != 0:
+                if r.returncode == 75:      # generate.EXIT_BUSY：另一处正在生成
+                    return self._send(429, {"error": "已有生成任务在跑，稍后再试"})
                 return self._send(502, {"error": (r.stderr or r.stdout or f"退出码 {r.returncode}").strip()[-2000:]})
             recs = read_jsonl(SUGGESTIONS)
             if len(recs) <= before:
@@ -758,17 +812,24 @@ def main():
     global PASSWORD, SECRET
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8801)
-    ap.add_argument("--host", default="0.0.0.0")
+    ap.add_argument("--host", default="127.0.0.1",
+                    help="绑定地址，默认只监听本机（面版是明文 http）")
+    ap.add_argument("--lan", action="store_true",
+                    help="绑到 0.0.0.0 让局域网能访问；聊天记录和模型 Key 都是明文，自己权衡")
     ap.add_argument("--check-interval", type=float, default=30.0,
                     help="后台自检间隔（秒），0 表示不起自检")
     a = ap.parse_args()
+    host = "0.0.0.0" if a.lan else a.host
     PASSWORD, SECRET = load_creds()
     if a.check_interval > 0:
         threading.Thread(target=checker_loop, args=(a.check_interval,), daemon=True).start()
         print(f"[panel] 后台自检已启动，每 {a.check_interval:g}s 看一次新聊天记录"
               f"（关掉：HERMES_PANEL_NO_CHECK=1 或放 store/.no_check）", flush=True)
-    srv = ThreadingHTTPServer((a.host, a.port), H)
-    print(f"[panel] 监听 {a.host}:{a.port}", flush=True)
+    srv = ThreadingHTTPServer((host, a.port), H)
+    print(f"[panel] 监听 {host}:{a.port}", flush=True)
+    if host not in ("127.0.0.1", "localhost"):
+        print("[panel] ⚠️ 监听在非本机地址：面板走明文 http，聊天记录和模型 Key 都会"
+              "在局域网里裸奔（家里内网可接受，别往公网映射）", flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

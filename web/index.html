@@ -108,7 +108,7 @@ h3{margin:16px 0 6px;font-size:13px;color:#666;font-weight:600}
 <div id="toast"></div>
 <script>
 const $=id=>document.getElementById(id);
-let session=null,busy=false,lastTs=null;
+let session=null,busy=false,lastTs=null,lastKey=null;
 function toast(t){const e=$('toast');e.textContent=t;e.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>e.style.display='none',3500)}
 function el(tag,cls,txt){const e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e}
 function cut(s,n){s=(s||'').replace(/\s+/g,' ').trim();return s.length>n?s.slice(0,n)+'…':s}
@@ -120,10 +120,27 @@ async function api(path,opt){
   return d;
 }
 async function copy(text){
+  // navigator.clipboard 只在 https / localhost 下存在，而面板通常是 http://<NAS_IP>，
+  // 手机上直接是 undefined —— 所以必须留一条降级路：隐藏 textarea + execCommand。
+  if(navigator.clipboard&&window.isSecureContext){
+    try{await navigator.clipboard.writeText(text);toast('已复制');return true}
+    catch(e){/* 落到下面的降级路 */}
+  }
   try{
-    if(!navigator.clipboard)throw new Error('当前环境不支持剪贴板（需 HTTPS 或 localhost）');
-    await navigator.clipboard.writeText(text);toast('已复制');
-  }catch(e){toast('复制失败：'+e.message+'。请长按文字手动复制')}
+    const ta=document.createElement('textarea');
+    ta.value=text;ta.setAttribute('readonly','');
+    ta.style.cssText='position:fixed;top:0;left:0;width:1px;height:1px;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();ta.setSelectionRange(0,ta.value.length);
+    const ok=document.execCommand('copy');
+    document.body.removeChild(ta);
+    if(ok){toast('已复制');return true}
+    toast('浏览器不让自动复制，长按文字手动复制吧');
+    return false;
+  }catch(e2){
+    toast('复制失败：'+e2.message+'。请长按文字手动复制');
+    return false;
+  }
 }
 async function fillTo(i,btn){
   if(busy)return;
@@ -230,6 +247,27 @@ function render(s){
     if(x.time_hint)d.appendChild(el('small',null,x.time_hint));
     d.appendChild(document.createTextNode(x.text||''));m.appendChild(d);
   }
+  lastKey=stateKey(s);
+}
+
+// 版本号：内容真变了才重建 DOM。以前每 5 秒无条件整块重绘，用户选着文字
+// 就被清掉、按钮点一半就没了。
+function stateKey(s){
+  const m=s.messages||[],last=m[m.length-1]||{};
+  const meta=s.suggestion_meta||{};
+  return [meta.ts_utc||'',m.length,last.ts_utc||'',s.collecting?1:0,
+          (s.check&&s.check.last_check_utc)||'',(s.suggestions||[]).length].join('|');
+}
+function selecting(){
+  const sel=window.getSelection&&window.getSelection();
+  return !!(sel&&!sel.isCollapsed&&String(sel).length>0);
+}
+async function tick(){
+  if(busy||document.hidden)return;            // 页面在后台就别轮询了
+  const s=await api('/api/state');
+  if(stateKey(s)===lastKey)return;            // 没变化：一个 DOM 都不碰
+  if(selecting())return;                      // 正在选字：等他选完
+  render(s);
 }
 async function refresh(){
   try{
@@ -345,5 +383,7 @@ $('cfg').onclick=async()=>{
   catch(e){toast('读取配置失败：'+e.message)}
 };
 $('regen').onclick=generate;
-refresh();setInterval(()=>{if(!busy)refresh()},5000);
+refresh();
+setInterval(()=>{tick().catch(()=>{})},5000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)tick().catch(()=>{})});
 </script></body></html>

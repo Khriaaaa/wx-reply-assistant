@@ -259,6 +259,8 @@ python3 assistant.py up --port 8801 --no-collector
 ```
 
 浏览器打开 `http://<这台机器的IP>:8801`，首次启动的随机密码写在 `store/.panel_password`。
+面板默认只监听 127.0.0.1，要让别的机器访问得加 `--lan`（走明文 http，聊天记录和 Key 都在
+局域网里明文，别往公网映射）。
 （`--no-collector` 是「不连虚机」，只想看界面时加。）
 
 ## 8 真采集
@@ -300,7 +302,7 @@ python3 assistant.py down
 Description=微信回复助手 · 面板
 [Service]
 WorkingDirectory=/path/to/wx-reply-assistant
-ExecStart=/usr/bin/python3 web/server.py --port 8801 --check-interval 45
+ExecStart=/usr/bin/python3 web/server.py --port 8801 --check-interval 45 --lan
 Restart=on-failure
 
 [Install]
