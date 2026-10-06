@@ -1,15 +1,33 @@
 # 复制成 config.local.yaml 再填自己的值（config.local.yaml 不进仓库）。
 # 环境变量优先级更高：WXREPLY_SSH / WXREPLY_SSH_PW / WXREPLY_QGA_UUID / WXREPLY_WORK
 #
-# 面板/生成用的 LLM provider 是另一份配置（默认读 /opt/data/config.yaml，
-# 可用 WXREPLY_CONFIG 指向别处，或放一个项目根的 config.local.yaml 覆盖）——
-# 见 orchestrator/generate.py 顶部的说明。
+# 这份文件同时也是「模型凭据」的落点。找配置的顺序：
+#   WXREPLY_CONFIG 指向的 yaml → 项目根的 config.local.yaml → /opt/data/config.yaml
+# 谁拼得出 provider 链就用谁 —— 也就是说这下面两段填好，就够跑了，
+# 不需要去动别的机器的 config.yaml。
 vm:
   ssh: user@nas-host            # NAS 上能 sudo virsh 的账号
   ssh_pw: ""                    # 留空则走 ssh 公钥认证
   qga_uuid: ""                  # 虚机 UUID（virsh list --all 能查到）
 
-# 生成候选用哪个模型，另外两个环境变量说了算（不设就用程序里的默认值）：
-#   WXREPLY_LEAD_PROVIDER   provider 名，写法同 config.yaml 里 provider 段的键（custom:xxx）
+# ---- 模型凭据（key 只写在这里；本文件已被 .gitignore 排除）----
+# 只需要三样：端点地址、key、模型名。任何 OpenAI 兼容的 /chat/completions 都行。
+custom_providers:
+  - name: myllm                       # 自己起个名，下面 model.provider 引用它
+    base_url: https://api.example.com/v1
+    api_key: ""                       # ← 你的 key
+
+model:
+  default: your-model-name            # 你要用的模型名
+  provider: custom:myllm              # 对应上面的 name；custom: 前缀可有可无
+
+# 可选：主 provider 挂了按顺序往下试。不填就只试上面那一个。
+# fallback_providers:
+#   - provider: custom:myllm2
+#     model: your-model-name
+#     base_url: https://api2.example.com/v1
+
+# 生成候选用哪个模型，这两个环境变量优先（不设就用程序里的默认值）：
+#   WXREPLY_LEAD_PROVIDER   provider 名，写法同上面的 name（custom:xxx）
 #   WXREPLY_LEAD_MODEL      模型名
 # 整条候选链的总时间预算：WXREPLY_BUDGET（秒，默认 150）

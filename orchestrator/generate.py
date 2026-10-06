@@ -28,12 +28,32 @@ PROMPT = ROOT / "prompts" / "reply_system.md"
 # provider 凭据来自 Hermes 的 config.yaml。
 # 容器里用绝对路径；放到虚机/别的机器上跑时那个路径不存在，
 # 于是支持两种覆盖：环境变量 WXREPLY_CONFIG，或项目根下的 config.local.yaml。
-CONFIG = Path("/opt/data/config.yaml")
-_env_cfg = os.environ.get("WXREPLY_CONFIG")
-if _env_cfg:
-    CONFIG = Path(_env_cfg)
+CONFIG_HINT = Path("/opt/data/config.yaml")
+_explicit_cfg = os.environ.get("WXREPLY_CONFIG")
+if _explicit_cfg:
+    CONFIG = Path(_explicit_cfg)
 elif (ROOT / "config.local.yaml").exists():
     CONFIG = ROOT / "config.local.yaml"
+else:
+    CONFIG = CONFIG_HINT
+
+
+def _config_candidates():
+    """依次找 provider 凭据的候选配置文件。
+
+    WXREPLY_CONFIG 给了就只认它（写错了要吵出来）；
+    否则 config.local.yaml 优先，但它常常只填了 vm 段 ——
+    所以拼不出 provider 链时继续往下找，而不是停在第一份上。
+    """
+    if _explicit_cfg:
+        return [Path(_explicit_cfg)]
+    cands = []
+    local = ROOT / "config.local.yaml"
+    if local.exists():
+        cands.append(local)
+    if CONFIG_HINT.exists():
+        cands.append(CONFIG_HINT)
+    return cands or [CONFIG_HINT]
 
 # 链首模型：只影响这个工具，不动 Hermes 主链路（Hermes 自己继续走 deepseek-v4.1-flash）。
 # 传 --provider none 可回退到 config.yaml 的 model.default + fallback_providers。
@@ -41,8 +61,11 @@ elif (ROOT / "config.local.yaml").exists():
 # 想要更强的用 --model mimo-v2.6-pro（实测 9.0s / 181 out tok，flash 是 5.7s / 115）。
 # 换成自己的 provider / 模型：设 WXREPLY_LEAD_PROVIDER / WXREPLY_LEAD_MODEL。
 # provider 名的写法跟 config.yaml 里 provider 段的键一致（形如 custom:xxx）。
-LEAD_PROVIDER = os.environ.get("WXREPLY_LEAD_PROVIDER", "custom:mimoplan")
-LEAD_MODEL = os.environ.get("WXREPLY_LEAD_MODEL", "mimo-v2.6-flash")
+# 下面这对是「本机默认值」：别人的配置里查不到它就自动让位给 model/fallback 链，
+# 不会因为一个本机专有的 provider 名把整个生成打挂（显式指定才报错）。
+BUNDLED_LEAD = ("custom:mimoplan", "mimo-v2.6-flash")
+LEAD_PROVIDER = os.environ.get("WXREPLY_LEAD_PROVIDER", BUNDLED_LEAD[0])
+LEAD_MODEL = os.environ.get("WXREPLY_LEAD_MODEL", BUNDLED_LEAD[1])
 
 # 整条候选链的总时间预算（秒），可用 WXREPLY_BUDGET 覆盖。
 # 链上每个 provider 的单发超时是 120s，链长 4 个时最坏 480s —— 比调用方的
@@ -108,24 +131,22 @@ def _provider_creds(cfg, prov_ref):
     return None, None
 
 
-def load_providers(override=None):
-    """拼候选链：override(如有) -> model(主) -> fallback_providers(依次)。
+def _chain_from(cfg, override):
+    """从一份配置里拼链：override(如有) -> model(主) -> fallback_providers(依次)。
 
-    返回 [(label, base_url, api_key, model), ...]
+    返回 [(label, base_url, api_key, model), ...]，拼不出就是空表。
     实测必要：commandcode 的 5 小时窗口被吃光后主模型直接 429，
     没有这条链生成就整个废掉。
     override 形如 ("custom:mimoplan", "mimo-v2.5")，只排链首、不写配置文件，
     所以换这个工具用哪家模型不动 Hermes 主链路。
     """
-    cfg = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
     chain, seen = [], set()
 
     if override:
         prov_ref, mid = override
         base, key = _provider_creds(cfg, prov_ref)
-        if not base or not key:
-            die(f"指定 provider {prov_ref} 在 config.yaml 里查不到 base_url / api_key")
-        chain.append((prov_ref, base.rstrip("/"), key, mid))
+        if base and key:
+            chain.append((prov_ref, base.rstrip("/"), key, mid))
 
     m = cfg.get("model") or {}
     if m.get("default") and m.get("provider"):
@@ -148,9 +169,35 @@ def load_providers(override=None):
         seen.add(sig)
         chain.append((prov, base, key, mid))
 
-    if not chain:
-        die("config.yaml 里没解析出任何可用的 provider")
     return chain
+
+
+def load_providers(override=None):
+    """按顺序在多份配置里找能用的 provider 链，取第一份拼得出来的。
+
+    config.local.yaml 常常只填了 vm 段 —— 不该因为它存在，
+    就把 /opt/data/config.yaml 里的模型凭据整个遮蔽掉（实测踩过）。
+    """
+    tried, cfgs = [], []
+    for path in _config_candidates():
+        tried.append(str(path))
+        try:
+            cfgs.append(yaml.safe_load(path.read_text(encoding="utf-8")) or {})
+        except Exception as e:
+            print(f"[info] 读不了 {path}: {e}", file=sys.stderr)
+
+    # 显式点名要用的 provider 全都没找到 —— 直接报错，别偷偷换一个模型跑
+    if override:
+        explicit = tuple(override) != BUNDLED_LEAD or bool(os.environ.get("WXREPLY_LEAD_PROVIDER"))
+        if explicit and not any(all(_provider_creds(cfg, override[0])) for cfg in cfgs):
+            die(f"指定 provider {override[0]} 在配置里查不到 base_url / api_key（找过 {', '.join(tried)}）")
+
+    for cfg in cfgs:
+        chain = _chain_from(cfg, override)
+        if chain:
+            return chain
+
+    die("没解析出任何可用的 provider（找过 " + ", ".join(tried) + "）")
 
 
 def _try_one(base, key, model, prompt_text, verbose, timeout=120):

@@ -167,15 +167,39 @@ vm:
 
 需要一个 OpenAI 兼容的 `/chat/completions`。配置按这个顺序找：
 
-1. 环境变量 `WXREPLY_CONFIG` 指向的 yaml
+1. 环境变量 `WXREPLY_CONFIG` 指向的 yaml（给了就只认它）
 2. 项目根下的 `config.local.yaml`
 3. 默认的 `/opt/data/config.yaml`
 
-yaml 里 provider 段的形状，见 `orchestrator/generate.py` 顶部注释。先别急着发请求，
-拼出来看一眼：
+谁拼得出 provider 链就用谁 —— 所以 `config.local.yaml` 只填了 `vm` 段也没事，
+会继续往下找，不会把模型那半遮蔽掉。
+
+要的就是三样东西：端点地址、key、模型名。在 `config.local.yaml` 里这样写：
+
+```yaml
+custom_providers:
+  - name: myllm                       # 自己起名
+    base_url: https://api.example.com/v1
+    api_key: "sk-..."                 # 你的 key
+
+model:
+  default: your-model-name            # 你要用的模型名
+  provider: custom:myllm              # 对应上面的 name
+```
+
+想再加一层保险，就补 `fallback_providers`（主 provider 挂了按顺序往下试）：
+
+```yaml
+fallback_providers:
+  - provider: custom:myllm2
+    model: your-model-name
+    base_url: https://api2.example.com/v1
+```
+
+先别急着发请求，拼出来看一眼：
 
 ```bash
-python3 orchestrator/generate.py --session <会话名> --dry-run --verbose
+.venv/bin/python3 orchestrator/generate.py --session <会话名> --dry-run --verbose
 ```
 
 `--dry-run` 只打印 prompt，不调 API。确认里面是你要的那段对话，再去掉它。
