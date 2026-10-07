@@ -151,18 +151,36 @@ while ($true) {
     $rid = (Get-Date -Format 'yyyyMMdd_HHmmss_fff')
     $chatText = $null; $titleText = $null; $sessText = $null; $winText = $null; $shotName = $null
     try {
-        # a. HWND
+        # a. HWND —— 用 JSON 挑「真正的主窗口」。
+        #    老写法是从文本输出里抓第一个 HWND：微信一旦有登录窗/提示弹窗，
+        #    第一个 HWND 往往是 mmui::XDialog（330×219 那个提示框），
+        #    于是截图拍错窗口，NAS 侧的像素判左右直接全废。
+        #    规则：剔掉登录窗和弹窗，剩下按面积取最大；一个都不剩（掉登录了）
+        #    就退回最大窗口，并在 steps 里写明，别让 NAS 侧误以为采到了。
         $hwnd = $null
-        $r = Invoke-Winapp @('ui', 'list-windows', '-a', 'Weixin')
-        if ($r.ok -and $r.stdout -match 'HWND\s+(\d+)') { $hwnd = $Matches[1] }
+        $r = Invoke-Winapp @('ui', 'list-windows', '-a', 'Weixin', '--json')
+        if ($r.ok -and $r.stdout.Length -gt 2) {
+            try {
+                $wins = @($r.stdout | ConvertFrom-Json) | Where-Object { $_.hwnd }
+                # list-windows 给的 className 全是 Qt51514QWindowIcon，认不出登录窗；
+                # 能认的是 ownerHwnd：提示弹窗是主窗口的 owned window（非 0），
+                # 主窗口/登录窗才是顶层（0）。所以：顶层里取面积最大的。
+                $real = @($wins | Where-Object { [int]$_.ownerHwnd -eq 0 })
+                $pool = @(if ($real.Count -gt 0) { $real } else { $wins })
+                $pick = $pool | Sort-Object { [int]$_.width * [int]$_.height } -Descending | Select-Object -First 1
+                if ($pick) { $hwnd = [string]$pick.hwnd }
+            } catch { $steps += 'hwnd=PARSE_FAIL' }
+        }
         if ($hwnd) { $steps += ('hwnd=' + $hwnd) } else { $steps += ('hwnd=FAIL(code ' + $r.code + ')') }
+        # 后面每一步都盯同一个窗口，别让 winapp 自己按「最大窗口」乱选
+        $tgt = @(if ($hwnd) { @('-w', $hwnd) } else { @('-a', 'Weixin') })
 
         # b0. 先把消息列表往下拨一点，再读。
         #     UIA 只暴露「视口里已实例化」的气泡：窗口没滚到底时，底部的新消息**根本不在树里**
         #     （实测：会话列表都提示 2 条新消息了，chat_message_list 里还只有老的那几条，
         #     NAS 侧因此判「没有新消息」）。所以每轮先滚一小格 = 约一条消息的高度：
         #     宁可分几轮慢慢追到底，也不要一次跳一个视口——跳过去中间的消息就永久漏了。
-        $r = Invoke-Winapp @('ui', 'scroll', 'chat_message_list', '-a', 'Weixin', '--wheel', '-1', '--json')
+        $r = Invoke-Winapp (@('ui', 'scroll', 'chat_message_list') + $tgt + @('--wheel', '-1', '--json'))
         $steps += (Step-Name 'scroll' $r)
         Start-Sleep -Milliseconds 150
 
@@ -170,7 +188,7 @@ while ($true) {
         #    "返回了非空 JSON" 不能当作采到了：微信掉登录后，登录窗口/提示框的树照样几千字符，
         #    于是每一轮都报 chat=ok，NAS 侧一直以为在正常采集 —— 假通过，比报错更坏。
         #    判据改成"这一屏里真的有没有聊天气泡"。
-        $r = Invoke-Winapp @('ui', 'inspect', 'chat_message_list', '-a', 'Weixin', '-d', '12', '--json')
+        $r = Invoke-Winapp (@('ui', 'inspect', 'chat_message_list') + $tgt + @('-d', '12', '--json'))
         if ($r.ok -and $r.stdout.Length -gt 2) { $chatText = $r.stdout } else { $r.ok = $false }
         if ($r.ok -and $r.stdout -notmatch 'ChatTextItemView') {
             $chatText = $null
@@ -181,12 +199,12 @@ while ($true) {
         }
 
         # b2. 聊天标题栏的联系人真名（UIA 直读；会话列表高亮在"搜索打开聊天"时会跟不上）
-        $r = Invoke-Winapp @('ui', 'inspect', 'current_chat_name_label', '-a', 'Weixin', '-d', '2', '--json')
+        $r = Invoke-Winapp (@('ui', 'inspect', 'current_chat_name_label') + $tgt + @('-d', '2', '--json'))
         if ($r.ok -and $r.stdout.Length -gt 2) { $titleText = $r.stdout } else { $r.ok = $false }
         $steps += (Step-Name 'title' $r)
 
         # c. sessions
-        $r = Invoke-Winapp @('ui', 'inspect', 'session_list', '-a', 'Weixin', '-d', '3', '--json')
+        $r = Invoke-Winapp (@('ui', 'inspect', 'session_list') + $tgt + @('-d', '3', '--json'))
         if ($r.ok -and $r.stdout.Length -gt 2) { $sessText = $r.stdout } else { $r.ok = $false }
         $steps += (Step-Name 'sessions' $r)
 
@@ -225,7 +243,7 @@ while ($true) {
         }
 
         # e. window origin (so the NAS side can map UIA coords to screenshot pixels)
-        $r = Invoke-Winapp @('ui', 'inspect', '-a', 'Weixin', '-d', '1', '--json')
+        $r = Invoke-Winapp (@('ui', 'inspect') + $tgt + @('-d', '1', '--json'))
         if ($r.ok -and $r.stdout.Length -gt 2) { $winText = $r.stdout } else { $r.ok = $false }
         $steps += (Step-Name 'window' $r)
     } catch {
