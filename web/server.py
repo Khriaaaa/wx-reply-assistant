@@ -5,7 +5,9 @@
   python3 web/server.py [--port 8801] [--host 0.0.0.0]
 路径相对脚本位置，不依赖 cwd。数据在 ../store/。
 密码: ../store/.panel_password（不存在则随机生成，仅首次生成时在日志打印一次）
-接口: GET / | /login | /api/state | /api/health | /api/setup ; POST /login | /api/generate | /api/fill | /api/setup
+接口: GET / | /login | /api/state | /api/health | /api/setup ; POST /login | /api/generate | /api/fill | /api/setup | /api/msg
+/api/msg 手动补一条上下文消息（谁说的 + 说了什么），直接追加进 messages.jsonl，
+给「有几句对话发生在采集器看不到的地方」用 —— 补进去的行和采集行同结构，下轮生成直接吃到。
 /api/setup 是「首次配置」：网页上挑一家厂商（预置国内主流厂商的 OpenAI 兼容地址，
 见 orchestrator/providers_cn.py）、填 Key、填模型，服务端真连一次测通再落盘。
 Key 存在 store/.llm.yaml（0600，不进仓库）里，接口只回显尾四位，绝不回传明文。
@@ -111,6 +113,34 @@ def write_check(**kw):
     tmp = CHECK_STATE.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(cur, ensure_ascii=False, indent=2), encoding="utf-8")
     tmp.replace(CHECK_STATE)
+
+
+def add_message(session, sender, text, manual=True):
+    """往 messages.jsonl 追加一行（手动补上下文用）。
+
+    字段结构对齐采集器写出的行（ts_utc/session/sender/text/fp），生成、面板、
+    自检都直接吃。fp 照抄采集器的指纹公式（不含 sender，见 wx_collector
+    fingerprint 的注释），再用「手动行」前缀 + 随机盐，保证重发同一句不会
+    撞到采集器已入库的同文本行 —— 手动补的上下文本来就该算一条新消息。
+    追加必须持 _gen_lock：生成侧 GenLock 拿的是同一把进程间文件锁，但
+    本进程内 /api/msg 与后台自检的读改写并发只靠线程锁隔开。
+    """
+    row = {
+        "ts_utc": utcnow(),
+        "session": session,
+        "sender": sender,
+        "text": text,
+        "manual": True,
+        "fp": "h-manual-" + hashlib.sha1(
+            "\x1f".join([session, text, utcnow(), secrets.token_hex(4)])
+            .encode("utf-8")).hexdigest()[:20],
+    }
+    MESSAGES.parent.mkdir(parents=True, exist_ok=True)
+    line = json.dumps(row, ensure_ascii=False) + "\n"
+    with _gen_lock:
+        with open(MESSAGES, "a", encoding="utf-8") as f:
+            f.write(line)
+    return row
 
 
 def newest_fp():
@@ -750,6 +780,8 @@ class H(BaseHTTPRequestHandler):
                 return self._setup()
             if path == "/api/fill":
                 return self._fill()
+            if path == "/api/msg":
+                return self._api_msg()
             self._send(404, {"error": "not found"})
         except _BodyTooLarge:
             return self._send(413, {"error": "请求体过大（上限 64KB）"})
@@ -902,6 +934,36 @@ class H(BaseHTTPRequestHandler):
         finally:
             _fill_lock.release()
         self._send(200, {"ok": True, "index": idx, "seconds": round(dt, 1), "text": text})
+
+    def _api_msg(self):
+        """手动补一条上下文消息：谁说的 + 说了什么，直接进 messages.jsonl。
+
+        给「微信上还有别的窗口/换设备聊过几句、采集器读不到」的场景用：
+        补进去的行和采集的行同结构，生成端不用改一行代码就能吃到。
+        空文本、超长文本、未知 sender 都在入口拦掉。
+        """
+        try:
+            req = json.loads(self._body() or b"{}") or {}
+        except Exception:
+            return self._send(400, {"error": "body 不是合法 JSON"})
+        if not isinstance(req, dict):
+            return self._send(400, {"error": "body 得是 JSON 对象"})
+        text = str(req.get("text") or "").strip()
+        sender = str(req.get("sender") or "them").strip().lower()
+        if not text:
+            return self._send(400, {"error": "内容是空的"})
+        if len(text) > 2000:
+            return self._send(400, {"error": "一条消息太长（上限 2000 字），拆成几条吧"})
+        if sender not in ("me", "them"):
+            return self._send(400, {"error": "sender 只能是 me（我发的）或 them（对方发的）"})
+        session = pick_session(read_jsonl(MESSAGES))
+        if not session:
+            # 全新 store（还没采到任何消息）时也给个去处，别让第一次手动补上下文就 400
+            session = "未命名会话"
+        add_message(session, sender, text)
+        print(f"[panel] 手动补了 1 条上下文（{session} / {sender}，{len(text)} 字）", flush=True)
+        return self._send(200, {"ok": True, "session": session, "sender": sender,
+                                "state": state()})
 
 
 def main():

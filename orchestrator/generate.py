@@ -35,7 +35,10 @@ PROMPT = ROOT / "prompts" / "reply_system.md"
 CONFIG_HINT = Path("/opt/data/config.yaml")
 # 面板「首次配置」写的就是这个文件：单独的、不进仓库的小配置，专门放模型接口凭据。
 # 不去改用户的 config.local.yaml —— 那里面常有自己的注释和 vm 段，整段重写会把注释吃掉。
-LLM_CFG = Path(os.environ.get("WXREPLY_LLM_CONFIG", str(ROOT / "store" / ".llm.yaml")))
+# 默认跟 STORE 走（WXREPLY_STORE 覆盖 Finding 时一起挪）：不然面板把 .llm.yaml
+# 写进覆盖的 store，generate 却回根 store 去找 —— 面板说已配置、生成说没 provider，
+# 实测就是这么岔开的。
+LLM_CFG = Path(os.environ.get("WXREPLY_LLM_CONFIG", str(STORE / ".llm.yaml")))
 _explicit_cfg = os.environ.get("WXREPLY_CONFIG")
 if _explicit_cfg:
     CONFIG = Path(_explicit_cfg)

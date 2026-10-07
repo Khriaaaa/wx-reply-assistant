@@ -64,6 +64,13 @@ h3{margin:16px 0 6px;font-size:13px;color:#666;font-weight:600}
 .me{align-self:flex-end;background:#95ec69}.them{align-self:flex-start;background:#fff}
 .unknown{align-self:center;background:#dfe2e6}
 .hint{font-size:12px;color:#777;margin:8px 0}
+/* ---- 手动补上下文 ---- */
+#ctxbar{display:flex;gap:6px;margin-top:10px;align-items:flex-start}
+#ctxWho{flex:none;width:96px;padding:8px;border:1px solid #d0d4da;border-radius:6px;font-size:13px;background:#fff;color:#1f2329}
+#ctxText{flex:1;min-width:0;padding:8px;border:1px solid #d0d4da;border-radius:6px;font-size:13.5px;resize:none;font-family:inherit;line-height:1.4}
+#ctxText:focus,#ctxWho:focus{outline:none;border-color:#07c160}
+#ctxAdd{flex:none;padding:8px 14px;font-size:13px}
+.m .tag-m{font-size:10.5px;color:#fff;background:#b9bec6;border-radius:4px;padding:1px 5px;margin-left:6px;vertical-align:1px}
 /* ---- 首次配置弹窗 ---- */
 .modal{position:fixed;inset:0;background:#0b122066;display:none;align-items:center;justify-content:center;z-index:9;padding:12px}
 .modal.on{display:flex}
@@ -91,6 +98,11 @@ h3{margin:16px 0 6px;font-size:13px;color:#666;font-weight:600}
 <div id="panel"></div>
 <h3>聊天记录</h3>
 <div id="msgs"></div>
+<div id="ctxbar">
+  <select id="ctxWho"><option value="them">对方说的</option><option value="me">我发的</option></select>
+  <textarea id="ctxText" rows="1" placeholder="补一句采集器没读到的对话，给模型多点上下文（回车发送，Shift+回车换行）"></textarea>
+  <button id="ctxAdd" class="pri">补进上下文</button>
+</div>
 </div>
 <!-- 首次打开（还没配模型接口）时自动弹这个 -->
 <div id="mcfg" class="modal"><div class="mbox">
@@ -245,7 +257,9 @@ function render(s){
   for(const x of s.messages){
     const d=el('div','m '+(x.sender==='me'||x.sender==='them'?x.sender:'unknown'));
     if(x.time_hint)d.appendChild(el('small',null,x.time_hint));
-    d.appendChild(document.createTextNode(x.text||''));m.appendChild(d);
+    d.appendChild(document.createTextNode(x.text||''));
+    if(x.manual)d.appendChild(el('span','tag-m','手动'));
+    m.appendChild(d);
   }
   lastKey=stateKey(s);
 }
@@ -256,7 +270,8 @@ function stateKey(s){
   const m=s.messages||[],last=m[m.length-1]||{};
   const meta=s.suggestion_meta||{};
   return [meta.ts_utc||'',m.length,last.ts_utc||'',s.collecting?1:0,
-          (s.check&&s.check.last_check_utc)||'',(s.suggestions||[]).length].join('|');
+          (s.check&&s.check.last_check_utc)||'',(s.suggestions||[]).length,
+          m.filter(x=>x.manual).length].join('|');
 }
 function selecting(){
   const sel=window.getSelection&&window.getSelection();
@@ -382,6 +397,30 @@ $('cfg').onclick=async()=>{
   try{if(!setup)await loadSetup();openSetup('换厂商、换 Key、换模型都在这里')}
   catch(e){toast('读取配置失败：'+e.message)}
 };
+/* ---- 手动补上下文 ---- */
+async function addCtx(){
+  const btn=$('ctxAdd'),ta=$('ctxText');
+  const text=ta.value.trim();
+  if(!text){ta.focus();return}
+  if(busy)return;
+  busy=true;btn.disabled=true;btn.textContent='补入中…';
+  try{
+    await api('/api/msg',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({sender:$('ctxWho').value,text})});
+    ta.value='';ta.style.height='';toast('已补进上下文');
+    await refresh();
+  }catch(e){toast('补入失败：'+e.message)}
+  busy=false;btn.disabled=false;btn.textContent='补进上下文';
+  ta.focus();
+}
+// 回车发送、Shift+回车换行；高度随内容长
+$('ctxText').addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();addCtx()}
+});
+$('ctxText').addEventListener('input',e=>{
+  const t=e.target;t.style.height='auto';t.style.height=Math.min(t.scrollHeight,120)+'px';
+});
+$('ctxAdd').onclick=addCtx;
 $('regen').onclick=generate;
 refresh();
 setInterval(()=>{tick().catch(()=>{})},5000);
