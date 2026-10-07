@@ -399,11 +399,46 @@ def state():
         "fill_enabled": fill_enabled(),
         "check": safe_check(),
         "check_enabled": check_enabled(),
+        "link_test": link_test_state(),
     }
 
 
 # ---------------------------------------------------------------- 首次配置（模型接口）
 LLM_ENTRY = "wxreply"        # 写进 custom_providers 的那条的名字
+
+LINK_FILE = STORE / ".link_test.json"   # 最近一次链路测试的结果（面板自己写自己读）
+
+
+def link_test_state():
+    """/api/state 里带的「链路」状态：太旧的当没测过。
+
+    只存结果摘要，不存 Key；面板每次起进程读一遍，/api/state 每 5s 回给浏览器。
+    """
+    try:
+        j = json.loads(LINK_FILE.read_text(encoding="utf-8"))
+        ts = time.mktime(time.strptime(j["ts"], "%Y-%m-%dT%H:%M:%SZ")) if "ts" in j else 0
+        if time.time() - ts > 86400:      # 超过一天的结果不 preset「链路 ✓」，太旧会骗人
+            return {"state": "", "text": "未测"}
+        return {"state": j.get("state") or "", "text": j.get("text") or ""}
+    except Exception:
+        return {"state": "", "text": "未测"}
+
+
+def record_link_test(ok, detail):
+    """test_saved 打完一轮就落盘一次。Key 不进这个文件。"""
+    try:
+        LINK_FILE.write_text(json.dumps({
+            "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "state": "ok" if ok else "bad",
+            "text": ("✓ " if ok else "✗ ") + (detail or "")[:60],
+        }, ensure_ascii=False), encoding="utf-8")
+        try:
+            os.chmod(LINK_FILE, 0o600)
+        except OSError:
+            pass
+    except Exception as e:
+        print(f"[panel] 记链路测试结果失败: {e}", flush=True)
+
 sys.path.insert(0, str(ROOT / "orchestrator"))
 import providers_cn          # noqa: E402  国内厂商的 OpenAI 兼容地址预置表
 
@@ -859,6 +894,26 @@ class H(BaseHTTPRequestHandler):
             return self._send(400, {"error": "body 不是合法 JSON"})
         if not isinstance(req, dict):
             return self._send(400, {"error": "body 得是 JSON 对象"})
+
+        # test_saved：不填表单，直接对已保存的那条配置真连一次。
+        # 给主界面「模型链路」状态行用 —— 配置弹窗里的「测试连接」只测表单里
+        # 正在填的东西，已经存好的链路有没有坏（Key 被厂商吊销、厂商改地址）
+        # 在弹窗里看不出来。Key 照旧不回显，只回连接结果。
+        if req.get("test_saved"):
+            saved = saved_provider()
+            if not saved or not saved.get("base_url") or not saved.get("api_key"):
+                return self._send(400, {"error": "还没保存过模型接口，先在设置里填一遍"})
+            try:
+                ok, models, detail = probe_endpoint(
+                    saved["base_url"], saved["api_key"],
+                    saved.get("model") or "")
+            except Exception as e:
+                return self._send(502, {"ok": False, "detail": "",
+                                        "error": "测试连接时出错：%s: %s" % (type(e).__name__, e)})
+            models = models[:300]
+            record_link_test(ok, detail)
+            return self._send(200 if ok else 502,
+                              {"ok": ok, "detail": detail, "models": models})
 
         preset = providers_cn.by_id(str(req.get("provider_id") or "")) or {}
         base = str(req.get("base_url") or preset.get("base_url") or "").strip().rstrip("/")

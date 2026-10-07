@@ -50,6 +50,9 @@ button.fill{background:#1a7fdc;color:#fff;border-color:#1a7fdc}
 .strip .nm{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chip{font-size:11px;padding:1px 6px;border-radius:4px;background:#eef1f4;color:#6b7076;white-space:nowrap}
 .chip.on{background:#e8f5ee;color:#058a43}
+.chip.bad{background:#fdecea;color:#c0392b;cursor:pointer}
+.chip.testable{cursor:pointer}
+.chip.testing{opacity:.6}
 .ttl{margin:12px 14px 0;font-size:12px;color:#8b9198;font-weight:600}
 .tv{font-variant-numeric:tabular-nums;color:#3d434a;flex:0 0 26px}
 .tn{display:flex;align-items:center;gap:8px;flex:1}
@@ -198,6 +201,11 @@ function renderCard(s){
   strip.appendChild(el('span','nm',nm));
   strip.appendChild(el('span','chip'+(s.collecting?' on':''),s.collecting?'采集中':'采集未运行'));
   strip.appendChild(el('span','chip'+(s.check_enabled?' on':''),checkText(s)));
+  const link=s.link_test||{};
+  const lk=el('span','chip'+(link.state==='ok'?' on':(link.state==='bad'?' bad':''))+' testable',
+              '链路 '+(link.testing?'测试中…':link.text));
+  lk.onclick=()=>testLink(lk);
+  strip.appendChild(lk);
   box.appendChild(strip);
 
   box.appendChild(el('div','ok','✓ 建议已更新，选一句适合你的回复'));
@@ -421,6 +429,29 @@ $('ctxText').addEventListener('input',e=>{
   const t=e.target;t.style.height='auto';t.style.height=Math.min(t.scrollHeight,120)+'px';
 });
 $('ctxAdd').onclick=addCtx;
+
+/* ---- 模型链路测试：点状态条上的「链路」chip，真连一次已保存的接口 ---- */
+async function testLink(chipEl){
+  if(busy)return;
+  busy=true;
+  if(chipEl){chipEl.textContent='链路 测试中…';chipEl.classList.add('testing')}
+  try{
+    const r=await api('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({test_saved:true})});
+    linkResult(r.ok?'ok':'bad',r.detail);
+    toast('✓ '+r.detail);
+    if(r.models&&r.models.length)fillModels(r.models);
+  }catch(e){
+    // 401 在 api() 里已跳登录页；其余把原因记到 chip 上
+    if(e.message!=='未登录'){linkResult('bad',e.message);toast('链路不通：'+e.message)}
+  }
+  busy=false;
+  await refresh();
+}
+function linkResult(state,text){
+  // 只把这一次结果塞进当前 setup 缓存，5 秒后的 tick 会拿 /api/state 里的权威值盖过去
+  if(setup)setup.link_test={state,text};
+}
 $('regen').onclick=generate;
 refresh();
 setInterval(()=>{tick().catch(()=>{})},5000);
