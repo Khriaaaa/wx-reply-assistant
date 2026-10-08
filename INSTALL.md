@@ -18,6 +18,21 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-windows.ps1
 
 下面每节讲的是它们做了什么，以及它们不做的那部分。
 
+## 动手之前：你可能不需要这份教程
+
+如果只有一台 Windows，**不需要**下面这些步骤 —— 装桌面版就行：
+
+```
+https://github.com/Khriaaaa/wx-reply-assistant/releases/latest/download/wx-reply-assistant-setup.exe
+```
+
+双击装上，桌面出现「微信回复助手」，打开就是面板。安装包里带着 Python、
+三个依赖和读屏工具（winapp.exe），不依赖系统里的任何东西，也不要管理员权限。
+数据在 `%APPDATA%\wx-reply-assistant\`。第一次打开会让你填一个模型接口（API Key）。
+
+这份教程剩下部分是给「微信关在一台虚机里、采集和面板在另一台机器上」这种
+更折腾也更安全的用法 —— 它把微信和你的日常环境隔开，代价是要维护两台机器。
+
 ## 0 装的是什么，装在哪
 
 | 部分 | 跑在哪 | 干什么 |

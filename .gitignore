@@ -15,3 +15,8 @@ scripts/dist/
 __pycache__/
 *.pyc
 .venv/
+
+# 桌面壳（Electron）
+desktop/node_modules/
+desktop/dist/
+desktop/vendor/

@@ -72,6 +72,23 @@ store/         运行期数据（聊天记录、建议、截图）—— 不进�
 
 ## 快速开始
 
+### 单机版（推荐：一台 Windows 就能跑）
+
+微信在哪个 Windows 上，就装在哪台：
+
+```
+下载 https://github.com/Khriaaaa/wx-reply-assistant/releases/latest/download/wx-reply-assistant-setup.exe
+双击装上 → 桌面出现「微信回复助手」→ 打开就是面板
+```
+
+自带运行环境（Python、依赖、读屏工具全在安装包里），不用先装别的东西，
+不要管理员权限。数据放在 `%APPDATA%\wx-reply-assistant\`，卸载不丢。
+第一次打开会让你接一个模型接口（填个 API Key 就行），然后就能用了。
+
+想从源码打这个安装包：见 [desktop/README.md](desktop/README.md)。
+
+### 两台机器（虚机隔离 / NAS 常驻那套）
+
 前提：微信跑在一台 Windows 机器上（虚拟机、实体机都行），能通过 QEMU guest agent 操作，
 并且装了能读 UIA 的命令行工具（这里用的是 winapp-cli 风格的 `ui inspect` /
 `ui scroll` / `ui screenshot`）。
