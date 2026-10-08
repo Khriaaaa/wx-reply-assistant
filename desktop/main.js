@@ -194,14 +194,15 @@ function runPreflight(fix) {
 
 function reportPreflight(pf) {
   const line = (it) => (it.state === 'ok' ? '[ok] ' : '[!!] ') + it.name + ' —— ' + it.detail;
-  log('preflight blockers=' + pf.blockers + '\n' + pf.items.map(line).join('\n') +
+  log('preflight blockers=' + pf.blockers + ' fixed=' + pf.fixed + ' background=' + pf.background + '\n' +
+      pf.items.map(line).join('\n') +
       (pf.notes && pf.notes.length ? '\n备注: ' + pf.notes.join(' | ') : ''));
-  if (!pf.blockers) return;
   const bad = pf.items.filter(i => i.state !== 'ok');
+  if (!bad.length) return;
   dialog.showMessageBox({
-    type: 'warning',
+    type: pf.blockers ? 'warning' : 'info',
     title: '微信回复助手 · 环境体检',
-    message: pf.blockers + ' 项要处理（其余已自动补齐）',
+    message: pf.blockers ? (pf.blockers + ' 项要处理') : '有缺失，已在后台补',
     detail: bad.map(line).join('\n') + '\n\n面板照常打开，这几项不影响你先配模型。',
     buttons: ['知道了'],
   }).catch(() => {});
@@ -324,6 +325,11 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     openLog();
     Menu.setApplicationMenu(null);
+    createWindow();
+    createTray();
+    // 先体检：缺什么补什么（自带运行时、微信、端口、数据目录）。
+    // 必须排在 findPython 前面 —— 补下来的那份 Python 也得能被找到。
+    const pf = await runPreflight(true);
     python = findPython();
     if (!python) {
       dialog.showMessageBoxSync({
@@ -336,10 +342,6 @@ if (!app.requestSingleInstanceLock()) {
       app.exit(1);
       return;
     }
-    createWindow();
-    createTray();
-    // 先体检：缺什么补什么（自带运行时、微信、端口、数据目录），补不上的报给用户
-    const pf = await runPreflight(true);
     if (pf) reportPreflight(pf);
     boot();
   });
