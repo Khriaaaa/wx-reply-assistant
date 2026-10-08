@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>微信回复助手</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: #1A1A1A; color: #F5F3F0;
+    font: 14px/1.6 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    display: flex; align-items: center; justify-content: center;
+    -webkit-user-select: none; user-select: none;
+  }
+  .box { text-align: center; }
+  .mark {
+    width: 64px; height: 64px; margin: 0 auto 22px;
+    border-radius: 18px; background: #D97757; position: relative;
+    animation: float 2.4s ease-in-out infinite;
+  }
+  .mark::after {
+    content: ""; position: absolute; left: 50%; top: 50%;
+    width: 22px; height: 16px; margin: -8px 0 0 -11px;
+    background: #FFF; border-radius: 8px;
+  }
+  .mark::before {
+    content: ""; position: absolute; left: 28px; top: 40px;
+    border: 5px solid transparent; border-top-color: #FFF;
+    border-left-color: #FFF; transform: rotate(-14deg);
+  }
+  @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
+  h1 { font-size: 17px; font-weight: 600; margin: 0 0 6px; letter-spacing: .02em; }
+  p { margin: 0; color: #9C978F; font-size: 13px; }
+  .bar {
+    width: 220px; height: 3px; margin: 20px auto 0;
+    background: rgba(255,255,255,.08); border-radius: 3px; overflow: hidden;
+  }
+  .bar i {
+    display: block; width: 40%; height: 100%; background: #D97757;
+    border-radius: 3px; animation: slide 1.15s ease-in-out infinite;
+  }
+  @keyframes slide { 0%{margin-left:-40%} 100%{margin-left:100%} }
+  .hint { margin-top: 14px; font-size: 12px; color: #6F6A63; }
+</style>
+</head>
+<body>
+  <div class="box">
+    <div class="mark"></div>
+    <h1>微信回复助手</h1>
+    <p id="status">正在启动…</p>
+    <div class="bar"><i></i></div>
+    <div class="hint">只读微信窗口，不点击、不发送</div>
+  </div>
+  <script>
+    // 主进程会把状态写进来（win.webContents 里调 window.__setStatus）
+    window.__setStatus = function (t) {
+      var el = document.getElementById('status');
+      if (el && t) el.textContent = t;
+    };
+  </script>
+</body>
+</html>

@@ -1,0 +1,59 @@
+{
+  "name": "wx-reply-assistant",
+  "productName": "微信回复助手",
+  "version": "1.1.0",
+  "description": "读微信聊天，给三条候选回复 —— 只给建议，不自动发送",
+  "main": "main.js",
+  "author": "Khriaaaa",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/Khriaaaa/wx-reply-assistant",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis --x64"
+  },
+  "devDependencies": {
+    "electron": "33.4.11",
+    "electron-builder": "25.1.8"
+  },
+  "build": {
+    "appId": "com.khriaaaa.wxreply",
+    "productName": "微信回复助手",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "loading.html",
+      "package.json",
+      "build/icon.png",
+      "build/icon.ico"
+    ],
+    "extraResources": [
+      { "from": "../assistant.py", "to": "py/assistant.py" },
+      { "from": "../collector", "to": "py/collector", "filter": ["**/*", "!**/__pycache__/**"] },
+      { "from": "../orchestrator", "to": "py/orchestrator", "filter": ["**/*", "!**/__pycache__/**"] },
+      { "from": "../web", "to": "py/web", "filter": ["**/*"] },
+      { "from": "../prompts", "to": "py/prompts", "filter": ["**/*"] },
+      { "from": "../tools", "to": "py/tools", "filter": ["**/*", "!**/__pycache__/**"] },
+      { "from": "../scripts", "to": "py/scripts", "filter": ["setup-windows.ps1"] },
+      { "from": "../config.example.yaml", "to": "py/config.example.yaml" },
+      { "from": "../requirements.txt", "to": "py/requirements.txt" },
+      { "from": "vendor/python", "to": "python" },
+      { "from": "vendor/winapp", "to": "winapp" }
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [{ "target": "nsis", "arch": ["x64"] }]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "微信回复助手",
+      "artifactName": "wx-reply-assistant-setup.exe"
+    }
+  }
+}
