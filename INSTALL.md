@@ -44,6 +44,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-windows.ps1
 嫌下面几步手动敲命令麻烦，就双击 **`wxreply-setup.exe`** —— 它把 2.1 / 2.2 / 2.3 要做的事
 一次跑完，把结果摆在一个窗口里：
 
+下载（一直指向最新一个版本，不用改链接）：
+
+<https://github.com/Khriaaaa/wx-reply-assistant/releases/latest/download/wxreply-setup.exe>
+
 - 逐项体检：QEMU guest agent、winapp CLI、PsExec64、工作目录、电源（别睡眠）、微信窗口
 - **缺什么就自己下什么**，不用你点：窗口一出来就开始下 GitHub Releases 上的 winapp CLI
   （~94 MB）和 live.sysinternals.com 上的 PsExec64，底下有进度条；下完自动重新体检一遍，

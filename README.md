@@ -78,6 +78,7 @@ store/         运行期数据（聊天记录、建议、截图）—— 不进�
 
 ```bash
 # 0. Windows 侧（微信跑在那台机器上）：双击 wxreply-setup.exe，缺什么它自己下
+#    下载 https://github.com/Khriaaaa/wx-reply-assistant/releases/latest/download/wxreply-setup.exe
 #    没带这个文件的话，源码在 scripts/setup-windows.ps1，打包法在 scripts/build-exe.ps1
 
 # 1. 虚机连接参数（不进仓库）
