@@ -35,7 +35,7 @@ npm install
 C:\Py311\python.exe scripts\make-vendor.py
 #   国内会走 npmmirror / 清华 PyPI；本机已经装了 winapp-cli 的话直接从那拷
 
-# 3. 打包（输出 dist\wx-reply-assistant-<版本>-setup.exe）
+# 3. 打包（输出 dist\wx-reply-assistant-setup.exe）
 $env:ELECTRON_BUILDER_BINARIES_MIRROR = 'https://npmmirror.com/mirrors/electron-builder-binaries/'
 npx electron-builder --win nsis --x64
 ```
@@ -57,3 +57,23 @@ npm start              # 开发模式直跑（用系统 Python，先设 WXREPLY_
 - **进门票只认本机**：`?k=` 那条 URL 仅 127.0.0.1 来源可用，开了 `--lan` 也换不到 cookie
 - **退出要收干净**：先 `assistant.py down` 停采集/生成/面板，再退壳子
 - **端口残留先清**：8801 被旧进程占着时请求会乱点头，boot 前会清掉自己的监听
+
+## 安装包完整性：为什么不做「自校验哈希」
+
+曾经想给安装包加一段「安装前算出自己的 SHA256，和脚本里嵌的常量比对」。**这个做法无解**：
+常量写在安装包自己里面，写进去哈希就变，改完得重算 —— `H(含 V 的 exe) == V` 没有解。
+实测三遍构建得到三个不同哈希，收敛判据永远失败；真交付出去的话，好包会被自己拦下。
+
+现在依赖 **NSIS 内建的完整性校验**（`CRCCheck`，默认开）。实测：
+
+| 包的状态 | `/S` 静默运行结果 |
+| --- | --- |
+| 完好 | `exit=0` |
+| 中段翻一个字节 | `exit=2`，0.37s 退出 |
+| 截掉尾部 64KB | `exit=2`，0.05s 退出 |
+
+零点几秒就退，说明是启动阶段直接拒掉，不是解压到一半才失败。
+局限要说清：CRC 覆盖打包数据段，exe 前部的引导代码不在覆盖范围内。
+
+用户想自己核对，发布时附上 `SHA256SUMS.txt` 和一个批处理（把安装包和它放同一目录，双击即校验）；
+生成器是 `scripts/make-verify-bat.py`，它把当前 exe 的哈希写进批处理再输出。
