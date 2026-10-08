@@ -2,158 +2,113 @@
 <!--
   设计说明（写给维护者，不计入画面）
 
-  【风格来源】照 Claude 移动端深色版那套视觉语言：近黑底、低对比分层、单一陶土橙点缀、
-    大圆角 + 胶囊按钮、衬线标题、线性描边图标。品牌星芒就是首页那颗 8 射线图标。
+  【调色板】暖中性 + 单一陶土强调色，全站只在这一套里取色，不再混入绿/蓝/橙：
+    #F2EFE8  页面底（暖米白）          #FBFAF6  卡片面            #FFFFFF  抬升面（输入框 / 弹窗）
+    #EAE6DC  次级面、进度条轨道        #E3DED2  细分隔线（1px hairline）
+    #D3CBBB  描边、次按钮边框          #1A1815  主文字（墨）
+    #55504A  次文字                    #8A847A  弱文字 / 标签 / 未激活态
+    #B4552F  陶土强调（推荐态、进行中、主行动、焦点环、进度条中档）
+    #8E3F22  强调深色（成功文案）      #F3E4DA  强调浅底          #E0C4B4  强调描边
+    #8A3324  砖红（只用于错误）        #F2E0DA  错误浅底          #DFBEB2  错误描边
+    #A79E8C  暖石（紧张度低档填充）    #23201C  实心按钮 / toast 底    #F4F1E9  实心按钮上的文字
+  规则：彩色只承担「状态」与「唯一推荐」两件事，其余一律走中性色。
 
-  【调色板】全站只在这一套里取色
-    #1A1A1A  页面底            #242424  卡片面          #2E2E2E  控件 / 抬升面（输入框、次按钮底）
-    #333333  次按钮 hover、我发的消息气泡            #1F1F1F  下沉面（引用块）
-    rgba(255,255,255,.075)  细分隔线    rgba(255,255,255,.14)  描边
-    #F5F3F0  主文字            #B9B5AF  次文字          #85817B  弱文字 / 眉标 / 占位
-    #D97757  陶土橙强调（品牌、推荐态、采集中、焦点环、进度条中档）
-    #E8967A  强调亮（强调底上的文字）  rgba(217,119,87,.14)  强调浅底  rgba(217,119,87,.38) 强调描边
-    #E0736B  错误红（比陶土冷一档，避免跟强调撞色）  rgba(224,115,107,.13) 错误浅底
-    #8A857E  中性石（紧张度低档）
-  规则：彩色只承担「品牌 / 状态 / 唯一推荐」三件事，其余一律走中性灰。
-
-  【对比度三档】暗色界面的层级主要靠对比度而不是边框，所以按钮分三档，别混：
-    ① 白底黑字（最高对比）= 只给「重新生成 / 生成 / 保存并开始 / 补进上下文」这类主行动
-    ② 陶土橙实心 = 只给「填入」，第二强
-    ③ 灰底描边 = 设置、复制、测试连接这些次行动
-  规则：同屏最多一个白底按钮。
-
-  【圆角】卡片 24 · 内嵌控件（输入框 / 字段 / 候选卡）14–18 · 按钮与标签 999（胶囊）
-    · 消息气泡 20（贴边那一侧收口 6）· 弹窗 28
-  【间距】4 的倍数：4 / 8 / 12 / 16 / 20 / 24 / 32 / 40 / 56
+  【spacing scale】4 的倍数：4 / 8 / 12 / 16 / 20 / 24 / 32 / 40 / 56
     组件内边距 16–24；卡片内部按 24 分节；相邻元素 8–12；区块之间 24–32；页面留白 40–56。
-  【字号】24 serif 弹窗标题 · 22 serif 卡片标题 · 17 serif 引用与会话名 · 15.5 候选正文
-    · 15 正文 · 13.5 说明 · 13 按钮 · 11.5 眉标（letter-spacing .14em）· 11 免责 / 来源
-  【图标】全内联 SVG，线性 1.2–1.8 描边、圆头。文案里的 ✓/✗ 走 JS 的 ICO 常量（innerHTML + 文本节点，
-    避免 textContent 转义）；按钮图标走 CSS mask + data-URI SVG（吃 currentColor），
-    这样 JS 改写按钮文字时图标不会被抹掉。
-  【暗色配套】html{color-scheme:dark} —— 不加这句原生 select / textarea / 滚动条还是白底。
-    滚动条单独写了 ::-webkit-scrollbar，否则右侧一道白条很跳。
+    间距只有这几档，避免「有的地方挤成一团、有的地方散到浪费」。
+
+  【字号阶梯】
+    24 serif 弹窗标题 · 22 serif 卡片标题 · 17 serif 引用原文 · 15.5 候选正文
+    15 正文 · 13.5 说明文字 · 13 按钮 · 11.5–12 眉标标签（letter-spacing .12em）· 11 免责 / 来源
+    标题与引用用衬线（ui-serif, Georgia, Songti SC…），界面文字用系统无衬线，两者混排。
+
+  【图标】全部内联 SVG，无 emoji、无字体图标、无外部资源：
+    文案里的 ✓ / ✗ 换成 16px 描边圆章 .ico（JS 里用 innerHTML + 文本节点拼装，避免 textContent 转义）；
+    按钮图标用 CSS mask + data-URI SVG（走 currentColor），这样 JS 改写按钮文字时图标不会被抹掉。
+
   【布局】
     桌面 ≥980px：两栏栅格。左栏（宽）建议卡片，右栏（约 45%）聊天记录 + 手动补上下文输入条，
       右栏消息流限高内滚；顶栏横跨两栏、sticky、底部一条 hairline；栏间距 40。
     移动 <980px：单栏，顺序 顶栏 → 建议卡片 → 聊天记录 → 输入条；输入条改成
-      「来源 / 文本域 / 按钮」纵向堆叠、按钮满宽；卡片内边距收窄到 18，候选卡按钮并排不换行。
+      「来源 / 文本域 / 按钮」纵向堆叠、按钮满宽；卡片内边距收窄到 16，候选卡按钮并排不换行。
 -->
 <html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>回复助手</title>
 <style>
-/* 由 fetch_fonts.py 生成，勿手改。字体来源 Google Fonts，OFL 协议，已本地托管。 */
-@font-face{font-family:'ClaudeSerif';font-style:normal;font-weight:400;font-display:swap;src:url('/fonts/ClaudeSerif-400.woff2') format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
-@font-face{font-family:'ClaudeSerif';font-style:normal;font-weight:600;font-display:swap;src:url('/fonts/ClaudeSerif-600.woff2') format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
-@font-face{font-family:'ClaudeSans';font-style:normal;font-weight:400;font-display:swap;src:url('/fonts/ClaudeSans-400.woff2') format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
-@font-face{font-family:'ClaudeSans';font-style:normal;font-weight:500;font-display:swap;src:url('/fonts/ClaudeSans-500.woff2') format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
-@font-face{font-family:'ClaudeSans';font-style:normal;font-weight:600;font-display:swap;src:url('/fonts/ClaudeSans-600.woff2') format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
-/* 中文衬线：从系统思源宋体（Noto Serif CJK SC Regular）按面板实际用到的 477 个字切出来的子集。
-   为什么要自己带：安卓一般不装中文衬线，衬线栈会静默退成黑体，标题在手机上就跟桌面不一样。
-   覆盖面 = index.html 里出现过的全部中日韩字符，动态正文里的字不在其中，会落到系统字体（见设计说明）。 */
-@font-face{font-family:'ClaudeSerifSC';font-style:normal;font-weight:400;font-display:swap;src:url('/fonts/ClaudeSerifSC-400.woff2') format('woff2')}
-
-/* ============ 主题令牌（照 Claude 移动端深色版） ============ */
 *{box-sizing:border-box}
 :root{
-  /* 底 / 面 */
-  --bg:#1A1A1A; --surface:#242424; --raised:#2E2E2E; --sunken:#1F1F1F; --ctrl:#333333;
-  --line:rgba(255,255,255,.075); --line-2:rgba(255,255,255,.14);
-  /* 文字 */
-  --ink:#F5F3F0; --ink-2:#C6C2BC; --ink-3:#9C978F;
-  /* 品牌陶土橙 */
-  --clay:#D97757; --clay-2:#E8967A; --clay-soft:rgba(217,119,87,.14); --clay-line:rgba(217,119,87,.38);
-  /* 错误：比陶土冷一档，避免跟强调撞色 */
-  --brick:#E0736B; --brick-soft:rgba(224,115,107,.13); --brick-line:rgba(224,115,107,.38);
-  --stone:#8A857E;
-  /* 最高对比只给主按钮：白底黑字 */
-  --pill:#FFFFFF; --on-pill:#171614;
-  /* 字体：Claude 用 Galaxie Copernicus（衬线）+ Styrene B（无衬线），均为商业字体。
-     这里用开源近似体自托管（web/fonts/，OFL）：Source Serif 4 顶 Copernicus，
-     Hanken Grotesk 顶 Styrene B。两个 webfont 只带 latin 子集（共 148KB），
-     中文字形交给下面的系统 CJK 栈 —— Anthropic 自己也不带中文，中文本来就是走系统字体。 */
-  --sans:'ClaudeSans',-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans CJK SC","Microsoft YaHei","Helvetica Neue",Arial,sans-serif;
-  /* ClaudeSerifSC 只带中文（477 字子集），拉丁字形由后面的 ClaudeSerif 接 —— 顺序不能反 */
-  --serif:'ClaudeSerifSC','ClaudeSerif',ui-serif,Georgia,Cambria,"Times New Roman","Noto Serif CJK SC","Songti SC","Source Han Serif SC",serif;
+  --bg:#F2EFE8; --surface:#FBFAF6; --raised:#FFFFFF; --sunken:#EAE6DC;
+  --line:#E3DED2; --line-2:#D3CBBB;
+  --ink:#1A1815; --ink-2:#55504A; --ink-3:#8A847A;
+  --clay:#B4552F; --clay-2:#8E3F22; --clay-soft:#F3E4DA; --clay-line:#E0C4B4;
+  --brick:#8A3324; --brick-soft:#F2E0DA; --brick-line:#DFBEB2;
+  --stone:#A79E8C;
+  --on-ink:#F4F1E9;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei","Helvetica Neue",Arial,sans-serif;
+  --serif:ui-serif,Georgia,Cambria,"Times New Roman","Songti SC","Noto Serif CJK SC","Source Han Serif SC",serif;
   --pad:16px;
 }
 @media(min-width:980px){:root{--pad:20px}}
-html{-webkit-text-size-adjust:100%;color-scheme:dark}
+html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--ink);font:400 15px/1.65 var(--sans);-webkit-font-smoothing:antialiased}
-::selection{background:rgba(217,119,87,.30)}
+::selection{background:#E6D9C7}
 svg{display:block}
 .ico{width:15px;height:15px;display:inline-block;vertical-align:-3px;margin-right:6px;flex:none}
-
-/* 滚动条也跟着暗下来，否则右侧一道白条很跳 */
-*::-webkit-scrollbar{width:10px;height:10px}
-*::-webkit-scrollbar-track{background:transparent}
-*::-webkit-scrollbar-thumb{background:rgba(255,255,255,.13);border-radius:99px;border:3px solid transparent;background-clip:padding-box}
-*::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.22);background-clip:padding-box}
 
 /* ---------- 骨架 ---------- */
 .wrap{max-width:1120px;margin:0 auto;padding:0 var(--pad) 56px}
 header{display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:30;
-  margin:0 calc(-1*var(--pad));padding:13px var(--pad);background:rgba(26,26,26,.88);
-  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+  margin:0 calc(-1*var(--pad));padding:13px var(--pad);background:var(--bg);border-bottom:1px solid var(--line)}
 .brand{display:flex;align-items:center;gap:8px;font-family:var(--serif);font-size:15px;letter-spacing:.02em;color:var(--ink);white-space:nowrap}
+.brand .mk{width:14px;height:14px;color:var(--clay)}
 .rule{width:1px;height:18px;background:var(--line-2);flex:none}
-/* 采集指示灯：暗底上一圈微光让它「亮」起来 */
-.dot{width:8px;height:8px;border-radius:50%;background:#4A4844;flex:none}
-.dot.on{background:var(--clay);box-shadow:0 0 0 3px rgba(217,119,87,.20)}
-#sess{flex:1;min-width:0;font-family:var(--serif);font-size:17px;letter-spacing:.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--line-2);flex:none}
+.dot.on{background:var(--clay);box-shadow:0 0 0 3px rgba(180,85,47,.15)}
+#sess{flex:1;min-width:0;font-family:var(--serif);font-size:15.5px;letter-spacing:.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #panel{margin-top:24px}
 h3{display:flex;align-items:center;gap:8px;margin:32px 0 16px;font:400 11.5px/1 var(--sans);letter-spacing:.14em;color:var(--ink-3)}
 h3 .ico{width:14px;height:14px;margin-right:0;color:var(--ink-3)}
 #msgs{display:flex;flex-direction:column;gap:12px}
-#ctxbar{display:flex;gap:10px;align-items:flex-start;margin-top:16px}
+#ctxbar{display:flex;gap:8px;align-items:flex-start;margin-top:16px}
 
-/* ---------- 按钮：胶囊形，三档对比 ---------- */
+/* ---------- 按钮 ---------- */
 button{font:500 13px/1 var(--sans);display:inline-flex;align-items:center;justify-content:center;
-  padding:10px 16px;border:1px solid var(--line-2);border-radius:999px;background:var(--raised);color:var(--ink);
-  cursor:pointer;transition:background .15s ease,border-color .15s ease,color .15s ease,transform .1s ease}
-button:hover{background:var(--ctrl);border-color:rgba(255,255,255,.22)}
-button:active{transform:scale(.98)}
-button.pri{background:var(--pill);border-color:var(--pill);color:var(--on-pill);font-weight:600}
-button.pri:hover{background:#EAE7E3;border-color:#EAE7E3}
-button:disabled{opacity:.4;cursor:not-allowed}
-button:disabled:hover{background:var(--raised);border-color:var(--line-2)}
-button:disabled:active{transform:none}
+  padding:9px 14px;border:1px solid var(--line-2);border-radius:7px;background:var(--raised);color:var(--ink);
+  cursor:pointer;transition:background .15s ease,border-color .15s ease,color .15s ease}
+button:hover{border-color:var(--ink-3)}
+button.pri{background:var(--ink);border-color:var(--ink);color:var(--on-ink)}
+button.pri:hover{background:#332E28;border-color:#332E28}
+button:disabled{opacity:.45;cursor:not-allowed}
+button:disabled:hover{border-color:var(--line-2)}
 :focus-visible{outline:2px solid var(--clay);outline-offset:2px}
 #cfg::before,#regen::before,#ctxAdd::before,#cPull::before,#cTest::before,#cSave::before,#cClose::before,
 button.fill::before,.cf button+button::before,.empty button::before{
   content:"";display:inline-block;width:14px;height:14px;flex:none;margin-right:6px;background:currentColor;
   -webkit-mask:var(--ico) no-repeat center/contain;mask:var(--ico) no-repeat center/contain}
 #cfg{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round'%3E%3Cpath d='M4 7h8M17 7h3M4 17h3M12 17h8'/%3E%3Ccircle cx='14.5' cy='7' r='2.2'/%3E%3Ccircle cx='9.5' cy='17' r='2.2'/%3E%3C/svg%3E")}
-#regen{background:transparent;border-color:var(--clay-line);color:var(--clay-2)}
-#regen:hover{background:var(--clay-soft);border-color:var(--clay)}
-#regen{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20.5 12a8.5 8.5 0 1 1-2.49-6.01'/%3E%3Cpath d='M20.5 4.5V10H15'/%3E%3C/svg%3E")}
-/* 填入：品牌橙实心，第二强 */
-button.fill{background:var(--clay);border-color:var(--clay);color:#1F120C;font-weight:600;padding:9px 15px}
-button.fill:hover{background:#E2835F;border-color:#E2835F}
-button.fill:disabled{background:var(--raised);border-color:var(--line-2);color:var(--ink-3)}
-button.fill:disabled:hover{background:var(--raised)}
-button.fill{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3.5v9.5'/%3E%3Cpath d='M8 9.5 12 13.5 16 9.5'/%3E%3Cpath d='M4.5 15.5V18a2.5 2.5 0 0 0 2.5 2.5h10a2.5 2.5 0 0 0 2.5-2.5v-2.5'/%3E%3C/svg%3E")}
+#regen{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20.5 12a8.5 8.5 0 1 1-2.49-6.01'/%3E%3Cpath d='M20.5 4.5V10H15'/%3E%3C/svg%3E")}
+button.fill{background:var(--ink);border-color:var(--ink);color:var(--on-ink);padding:8px 13px}
+button.fill:hover{background:#332E28;border-color:#332E28}
+button.fill{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3.5v9.5'/%3E%3Cpath d='M8 9.5 12 13.5 16 9.5'/%3E%3Cpath d='M4.5 15.5V18a2.5 2.5 0 0 0 2.5 2.5h10a2.5 2.5 0 0 0 2.5-2.5v-2.5'/%3E%3C/svg%3E")}
 .cf button+button{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='8.5' y='8.5' width='12' height='12' rx='2.5'/%3E%3Cpath d='M6 15.5H5A2.5 2.5 0 0 1 2.5 13V5A2.5 2.5 0 0 1 5 2.5h8A2.5 2.5 0 0 1 15.5 5v1'/%3E%3C/svg%3E")}
 #ctxAdd{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round'%3E%3Cpath d='M12 5v14M5 12h14'/%3E%3C/svg%3E")}
 #cPull{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3.5v9.5'/%3E%3Cpath d='M8.5 9.5 12 13l3.5-3.5'/%3E%3Cpath d='M4.5 20h15'/%3E%3C/svg%3E")}
 #cTest{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M13 2.5 4.8 13.5H11l-1 8 8.2-11H12z'/%3E%3C/svg%3E")}
-#cSave{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 12.5 9.5 17.5 19.5 6.5'/%3E%3C/svg%3E")}
+#cSave{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 12.5 9.5 17.5 19.5 6.5'/%3E%3C/svg%3E")}
 #cClose{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='8.5'/%3E%3Cpath d='M12 7v5.3l3.5 2.1'/%3E%3C/svg%3E")}
 .empty button{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round'%3E%3Cpath d='M12 5v14M5 12h14'/%3E%3C/svg%3E")}
 
 /* ---------- 建议卡片 ---------- */
-.jv{background:var(--surface);border:1px solid var(--line);border-radius:24px;overflow:hidden;
-  box-shadow:0 1px 0 rgba(255,255,255,.03) inset}
-.jvh{display:flex;align-items:baseline;gap:12px;padding:26px 24px 20px;border-bottom:1px solid var(--line)}
+.jv{background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:0 1px 2px rgba(26,24,21,.04)}
+.jvh{display:flex;align-items:baseline;gap:12px;padding:24px 24px 20px;border-bottom:1px solid var(--line)}
 .jvh b{font:400 22px/1.2 var(--serif);letter-spacing:.01em}
 .jvh .upd{margin-left:auto;font-size:11.5px;letter-spacing:.06em;color:var(--ink-3);white-space:nowrap}
-.ok{display:flex;align-items:flex-start;padding:12px 24px;font-size:13px;line-height:1.6;color:var(--clay-2);
-  background:var(--clay-soft);border-bottom:1px solid var(--clay-line)}
+.ok{display:flex;align-items:flex-start;padding:12px 24px;font-size:13px;line-height:1.6;color:var(--clay-2);background:var(--clay-soft);border-bottom:1px solid var(--clay-line)}
 .ok .ico{margin-top:2px;color:var(--clay)}
 .say{padding:24px 24px 0;font:400 11.5px/1 var(--sans);letter-spacing:.14em;color:var(--ink-3)}
-.quote{margin:10px 24px 0;padding:14px 18px;background:var(--sunken);border-left:2px solid var(--clay);
-  border-radius:0 12px 12px 0;font-family:var(--serif);font-size:17px;line-height:1.6;white-space:pre-wrap;word-break:break-word}
+.quote{margin:10px 24px 0;padding:12px 16px;background:var(--sunken);border-left:2px solid var(--clay-line);
+  border-radius:0 8px 8px 0;font-family:var(--serif);font-size:17px;line-height:1.6;white-space:pre-wrap;word-break:break-word}
 .ttl{margin:24px 24px 10px;font:400 11.5px/1 var(--sans);letter-spacing:.14em;color:var(--ink-3)}
 .kv{margin:0 24px;font-size:13.5px;line-height:1.7;color:var(--ink-2)}
 .kv div{display:flex;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
@@ -161,117 +116,103 @@ button.fill{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/s
 .kv dt{flex:0 0 74px;font:400 11.5px/1.6 var(--sans);letter-spacing:.1em;color:var(--ink-3);padding-top:2px}
 .kv dd{margin:0;flex:1;word-break:break-word}
 .cands{padding:20px 24px 24px;display:flex;flex-direction:column;gap:12px}
-.cand{position:relative;border:1px solid var(--line);border-radius:18px;padding:16px 20px;background:var(--raised)}
-.cand.top{border-color:var(--clay-line);background:linear-gradient(180deg,rgba(217,119,87,.10),rgba(217,119,87,.04))}
-.cand.top::before{content:"";position:absolute;left:-1px;top:16px;bottom:16px;width:2px;border-radius:2px;background:var(--clay)}
+.cand{position:relative;border:1px solid var(--line);border-radius:12px;padding:16px 20px;background:var(--raised)}
+.cand.top{border-color:var(--clay-line);background:#FCF5F0}
+.cand.top::before{content:"";position:absolute;left:-1px;top:14px;bottom:14px;width:2px;border-radius:2px;background:var(--clay)}
 .ch{display:flex;align-items:baseline;gap:8px;margin-bottom:8px}
 .lb{font:500 11.5px/1 var(--sans);letter-spacing:.12em;color:var(--ink-3)}
 .cand.top .lb{color:var(--clay)}
 .pc{margin-left:auto;font-variant-numeric:tabular-nums;font-size:12px;color:var(--ink-3)}
 .cand.top .pc{color:var(--clay);font-weight:600}
-.ct{font-size:15.5px;line-height:1.65;word-break:break-word;white-space:pre-wrap;color:var(--ink)}
-.cf{display:flex;align-items:center;gap:12px;margin-top:16px}
-.tag{margin-right:auto;font-size:11.5px;letter-spacing:.06em;color:var(--ink-3);border:1px solid var(--line-2);border-radius:999px;padding:3px 10px}
-
-/* 会话条：状态胶囊全带上状态灯，光靠颜色区分太弱 */
-.strip{display:flex;align-items:center;gap:8px;row-gap:8px;flex-wrap:wrap;padding:14px 24px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.02)}
-.av{width:30px;height:30px;border-radius:50%;background:var(--clay-soft);color:var(--clay);display:flex;align-items:center;
-  justify-content:center;font-family:var(--serif);font-size:14px;flex:0 0 30px;border:1px solid var(--clay-line)}
-.strip .nm{flex:1;min-width:5.5em;font-family:var(--serif);font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.chip{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;letter-spacing:.04em;padding:4px 10px;border-radius:999px;
-  background:var(--ctrl);border:1px solid var(--line-2);color:var(--ink-2);white-space:nowrap}
-.chip::before{content:"";width:6px;height:6px;border-radius:50%;background:#7C7770;flex:none}
+.ct{font-size:15.5px;line-height:1.65;word-break:break-word;white-space:pre-wrap}
+.cf{display:flex;align-items:center;gap:8px;margin-top:16px}
+.tag{margin-right:auto;font-size:11.5px;letter-spacing:.06em;color:var(--ink-3);border:1px solid var(--line);border-radius:999px;padding:3px 10px}
+.strip{display:flex;align-items:center;gap:8px;row-gap:8px;flex-wrap:wrap;padding:14px 24px;border-bottom:1px solid var(--line);background:var(--raised)}
+.av{width:28px;height:28px;border-radius:50%;background:var(--sunken);color:var(--ink-2);display:flex;align-items:center;
+  justify-content:center;font-family:var(--serif);font-size:14px;flex:0 0 28px}
+.strip .nm{flex:1;min-width:0;font-family:var(--serif);font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip{font-size:11.5px;letter-spacing:.04em;padding:3px 9px;border-radius:999px;background:var(--surface);
+  border:1px solid var(--line);color:var(--ink-3);white-space:nowrap}
 .chip.on{background:var(--clay-soft);border-color:var(--clay-line);color:var(--clay-2)}
-.chip.on::before{background:var(--clay)}
 .chip.bad{background:var(--brick-soft);border-color:var(--brick-line);color:var(--brick);cursor:pointer}
-.chip.bad::before{background:var(--brick)}
 .chip.testable{cursor:pointer}
-.chip.testable:hover{border-color:rgba(255,255,255,.24)}
+.chip.testable:hover{border-color:var(--ink-3)}
 .chip.testing{opacity:.6}
-.chip.testing::before{background:var(--clay);animation:pulse 1s ease-in-out infinite}
-@keyframes pulse{0%,100%{opacity:.35}50%{opacity:1}}
 .disc{padding:16px 24px 20px;font-size:11px;letter-spacing:.06em;color:var(--ink-3);border-top:1px solid var(--line);text-align:center}
-.empty{background:var(--surface);border:1px dashed var(--line-2);border-radius:20px;text-align:center;color:var(--ink-3);padding:40px 24px;font-size:13.5px}
+.empty{background:var(--surface);border:1px dashed var(--line-2);border-radius:12px;text-align:center;color:var(--ink-3);padding:40px 24px;font-size:13.5px}
 .empty button{margin-top:16px}
-.tv{font-variant-numeric:tabular-nums;font-size:12.5px;color:var(--ink);flex:0 0 auto;min-width:34px;font-weight:500}
+.tv{font-variant-numeric:tabular-nums;font-size:12.5px;color:var(--ink-2);flex:0 0 auto;min-width:34px}
 .tn{display:flex;align-items:center;gap:10px;flex:1}
-/* 轨道必须看得见：暗底上 #EAE6DC 那套浅色轨道会整条消失 */
-.bar{flex:1;height:6px;max-width:200px;border-radius:99px;background:rgba(255,255,255,.16);overflow:hidden;box-shadow:inset 0 0 0 1px rgba(255,255,255,.05)}
-.bar i{display:block;height:100%;border-radius:99px}
+.bar{flex:1;height:4px;max-width:200px;border-radius:2px;background:var(--sunken);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:2px}
 
 /* ---------- 聊天记录 ---------- */
-.m{max-width:80%;padding:11px 15px;border-radius:20px;word-break:break-word;white-space:pre-wrap;font-size:14.5px;line-height:1.6}
+.m{max-width:80%;padding:10px 14px;border-radius:14px;word-break:break-word;white-space:pre-wrap;font-size:14.5px;line-height:1.6}
 .m small{display:block;font-size:11px;letter-spacing:.04em;margin-bottom:4px;color:var(--ink-3)}
-.me{align-self:flex-end;background:var(--ctrl);color:var(--ink);border:1px solid rgba(255,255,255,.10);border-bottom-right-radius:6px}
-.me small{color:rgba(245,243,240,.55)}
-.them{align-self:flex-start;background:var(--surface);border:1px solid var(--line);border-bottom-left-radius:6px}
+.me{align-self:flex-end;background:#2B2723;color:var(--on-ink);border-bottom-right-radius:4px}
+.me small{color:rgba(244,241,233,.6)}
+.them{align-self:flex-start;background:var(--raised);border:1px solid var(--line);border-bottom-left-radius:4px}
 .unknown{align-self:center;background:transparent;border:1px dashed var(--line-2);color:var(--ink-3);font-size:13px;
   border-radius:999px;padding:5px 14px;text-align:center}
 .m .tag-m{display:inline-block;font-size:10.5px;letter-spacing:.06em;color:var(--ink-3);border:1px solid var(--line-2);
   border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:1px}
-.me .tag-m{color:rgba(245,243,240,.7);border-color:rgba(245,243,240,.28)}
+.me .tag-m{color:rgba(244,241,233,.75);border-color:rgba(244,241,233,.3)}
 
 /* ---------- 补上下文输入条 ---------- */
-#ctxWho{flex:0 0 100px;padding:11px 12px;border:1px solid var(--line-2);border-radius:14px;background:var(--raised);color:var(--ink)}
-#ctxText{flex:1;min-width:0;padding:11px 14px;border:1px solid var(--line-2);border-radius:14px;background:var(--raised);
-  color:var(--ink);font:400 14px/1.5 var(--sans);resize:none;min-height:44px}
+#ctxWho{flex:0 0 112px;padding:10px 12px;border:1px solid var(--line-2);border-radius:8px;background:var(--raised);color:var(--ink)}
+#ctxText{flex:1;min-width:0;padding:10px 12px;border:1px solid var(--line-2);border-radius:8px;background:var(--raised);
+  color:var(--ink);font:400 14px/1.5 var(--sans);resize:none;min-height:40px}
 #ctxText::placeholder{color:var(--ink-3)}
-#ctxText:focus,#ctxWho:focus,.fld input:focus,.fld select:focus{outline:none;border-color:var(--clay);box-shadow:0 0 0 3px rgba(217,119,87,.18)}
-#ctxAdd{flex:none;padding:11px 18px}
+#ctxText:focus,#ctxWho:focus,.fld input:focus,.fld select:focus{outline:none;border-color:var(--clay);box-shadow:0 0 0 3px rgba(180,85,47,.12)}
+#ctxAdd{flex:none;padding:10px 16px}
 
 /* ---------- 首次配置弹窗 ---------- */
-.modal{position:fixed;inset:0;background:rgba(0,0,0,.62);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);
+.modal{position:fixed;inset:0;background:rgba(26,24,21,.34);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);
   display:none;align-items:center;justify-content:center;z-index:60;padding:16px}
 .modal.on{display:flex}
-.mbox{background:var(--surface);border:1px solid var(--line-2);border-radius:28px;width:100%;max-width:520px;
-  max-height:92vh;overflow:auto;padding:32px;box-shadow:0 30px 70px rgba(0,0,0,.55)}
+.mbox{background:var(--surface);border:1px solid var(--line);border-radius:16px;width:100%;max-width:520px;
+  max-height:92vh;overflow:auto;padding:32px;box-shadow:0 24px 60px rgba(26,24,21,.18)}
 .mbox h2{margin:0 0 8px;font:400 24px/1.25 var(--serif)}
 .mbox .sub{margin:0 0 24px;font-size:13px;color:var(--ink-2);line-height:1.7}
 .fld{display:block;margin:16px 0}
-.fld span{display:block;font:400 11.5px/1 var(--sans);letter-spacing:.14em;color:var(--ink-3);margin-bottom:7px}
-.fld input,.fld select{width:100%;box-sizing:border-box;padding:11px 13px;border:1px solid var(--line-2);border-radius:14px;
+.fld span{display:block;font:400 11.5px/1 var(--sans);letter-spacing:.12em;color:var(--ink-3);margin-bottom:7px}
+.fld input,.fld select{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--line-2);border-radius:8px;
   font:400 14px/1.5 var(--sans);background:var(--raised);color:var(--ink)}
-/* .fld span 那条标签样式特异度是 (0,1,1)，会连 .withbtn 这个包装 span 一起吃掉，
-   表现是「模型」输入框和「拉取模型列表」按钮被压成上下两行、间距 0px。
-   这里把选择器升到 (0,2,1) 掰回「输入框 + 小按钮」同一行。 */
-.fld span.withbtn{display:flex;gap:8px;align-items:center;letter-spacing:0;color:var(--ink);font-size:14px;margin-bottom:0}
-.fld span.withbtn input{flex:1;min-width:0}
-button.mini{padding:9px 14px;font-size:12.5px;white-space:nowrap}
+.withbtn{display:flex;gap:8px;align-items:center;letter-spacing:0;color:var(--ink);font-size:14px;margin-bottom:0}
+.withbtn input{flex:1;min-width:0}
+button.mini{padding:8px 12px;font-size:12.5px;white-space:nowrap}
 .note{font-size:12px;color:var(--ink-3);line-height:1.7;margin:12px 0 0}
 .stat{display:none;font-size:13px;line-height:1.6;word-break:break-word}
-.stat.on{display:flex;align-items:flex-start;gap:2px;margin-top:16px;padding:12px 14px;border-radius:14px}
+.stat.on{display:flex;align-items:flex-start;gap:2px;margin-top:16px;padding:11px 13px;border-radius:8px}
 .stat .ico{margin-top:2px}
 .stat.ok{background:var(--clay-soft);color:var(--clay-2);border:1px solid var(--clay-line)}
 .stat.bad{background:var(--brick-soft);color:var(--brick);border:1px solid var(--brick-line)}
 .mrow{display:flex;gap:8px;margin-top:24px}
-.mrow button{flex:1;padding:12px 10px}
+.mrow button{flex:1;padding:11px 10px}
 .src{font-size:11px;color:var(--ink-3);margin:16px 0 0;word-break:break-all}
 
 /* ---------- toast ---------- */
-#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ctrl);color:var(--ink);
-  border:1px solid var(--line-2);padding:12px 18px;border-radius:14px;display:none;max-width:90%;font-size:13.5px;line-height:1.5;
-  box-shadow:0 16px 40px rgba(0,0,0,.55);z-index:80}
-#toast .ico{color:var(--clay)}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#23201C;color:var(--on-ink);
+  padding:11px 18px;border-radius:10px;display:none;max-width:90%;font-size:13.5px;line-height:1.5;
+  box-shadow:0 12px 32px rgba(26,24,21,.22);z-index:80}
+#toast .ico{color:var(--clay-line)}
 
 /* ---------- 响应式 ---------- */
 @media(max-width:600px){
   .rule{display:none}
-  /* 顶栏窄屏：品牌名先让位。它原本吃掉 60px，逼得会话名只剩 40px，连「胡朵朵」都显示不全 */
-  .brand{display:none}
-  #sess{font-size:16px}
-  .jvh{padding:22px 18px 16px}
+  .jvh{padding:20px 16px 16px}
   .jvh b{font-size:20px}
-  .ok{padding:11px 18px}
-  .say{padding:22px 18px 0}
-  .quote{margin:10px 18px 0;font-size:16px;padding:12px 14px}
-  .ttl{margin:22px 18px 8px}
-  .kv{margin:0 18px}
+  .ok{padding:11px 16px}
+  .say{padding:20px 16px 0}
+  .quote{margin:10px 16px 0;font-size:16px}
+  .ttl{margin:20px 16px 8px}
+  .kv{margin:0 16px}
   .kv dt{flex:0 0 66px}
-  .cands{padding:16px 18px 20px}
+  .cands{padding:16px}
   .cand{padding:14px 16px}
-  .strip{padding:12px 18px}
-  .disc{padding:14px 18px 18px}
-  .mbox{padding:26px 20px}
+  .strip{padding:12px 16px}
+  .disc{padding:14px 16px 18px}
+  .m\boxed{padding:24px 20px}
   .m{max-width:88%}
   #ctxbar{flex-wrap:wrap}
   #ctxWho{flex:1 1 100%}
@@ -291,7 +232,7 @@ button.mini{padding:9px 14px;font-size:12.5px;white-space:nowrap}
 }
 </style></head><body><div class="wrap">
 <header>
-  <span class="brand">回复助手</span>
+  <span class="brand"><svg class="mk" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><path d="M8 1.4v13.2M1.4 8h13.2M3.6 3.6l8.8 8.8M12.4 3.6l-8.8 8.8"/></svg>回复助手</span>
   <span class="rule"></span>
   <span id="dot" class="dot"></span><span id="sess">—</span>
   <button id="cfg">设置</button>
@@ -302,7 +243,7 @@ button.mini{padding:9px 14px;font-size:12.5px;white-space:nowrap}
 <div id="msgs"></div>
 <div id="ctxbar">
   <select id="ctxWho"><option value="them">对方说的</option><option value="me">我发的</option></select>
-  <textarea id="ctxText" rows="1" placeholder="补一句漏采的对话，回车加入"></textarea>
+  <textarea id="ctxText" rows="1" placeholder="补一句采集器没读到的对话，给模型多点上下文（回车发送，Shift+回车换行）"></textarea>
   <button id="ctxAdd" class="pri">补进上下文</button>
 </div>
 </div>
@@ -435,7 +376,7 @@ function renderCard(s){
     w.appendChild(el('span','tv',tn+'/9'));
     const bar=el('span','bar'),i=el('i');
     i.style.width=(tn/9*100)+'%';
-    i.style.background=tn<=3?'#8A857E':(tn<=6?'#D97757':'#E0736B');
+    i.style.background=tn<=3?'#A79E8C':(tn<=6?'#B4552F':'#8A3324');
     bar.appendChild(i);w.appendChild(bar);dd.appendChild(w);
     d.appendChild(dd);kv.appendChild(d);
   }

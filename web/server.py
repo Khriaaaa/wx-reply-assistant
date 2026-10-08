@@ -777,7 +777,8 @@ class H(BaseHTTPRequestHandler):
         if not p.is_file() or p.name == "server.py" or p.name.startswith("."):
             return self._send(404, "not found", "text/plain; charset=utf-8")
         ctype = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
-                 ".css": "text/css; charset=utf-8"}.get(p.suffix, "application/octet-stream")
+                 ".css": "text/css; charset=utf-8", ".woff2": "font/woff2",
+                 ".svg": "image/svg+xml", ".png": "image/png"}.get(p.suffix, "application/octet-stream")
         self._send(200, p.read_bytes(), ctype)
 
     def _body(self):
