@@ -37,6 +37,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
+# Windows 下 stdout 被重定向到文件时按本地代码页（GBK）编码，日志里的 ⚠️ ✓ ✗ 会让
+# 面板在启动阶段直接崩掉。统一压成 UTF-8、编不出来就替换。
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+
 import yaml
 
 WEB = Path(__file__).resolve().parent
@@ -305,6 +314,26 @@ def check_cookie(val):
     try:
         exp, nonce, sig = val.split(".")
         good = hmac.new(SECRET, f"{exp}.{nonce}".encode(), hashlib.sha256).hexdigest()
+        return hmac.compare_digest(sig, good) and int(exp) > time.time()
+    except Exception:
+        return False
+
+
+def make_entry_token(ttl=180):
+    """一次性进门票：给本机自动打开的浏览器用，省得手打密码。
+
+    签在 SECRET 上、带有效期，只在本机来源上认（见 _route_get）。面板要是开了
+    --lan，别人就算拿到这条 URL 也换不到 cookie。
+    """
+    exp = str(int(time.time()) + ttl)
+    sig = hmac.new(SECRET, f"entry.{exp}".encode(), hashlib.sha256).hexdigest()
+    return f"{exp}.{sig}"
+
+
+def check_entry_token(val):
+    try:
+        exp, sig = val.split(".")
+        good = hmac.new(SECRET, f"entry.{exp}".encode(), hashlib.sha256).hexdigest()
         return hmac.compare_digest(sig, good) and int(exp) > time.time()
     except Exception:
         return False
@@ -755,6 +784,13 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, {"ok": True})
         if path == "/login":
             return self._send(200, LOGIN_HTML.replace("%ERR%", ""), "text/html; charset=utf-8")
+        # ?k=<进门票>：assistant.py 自动开浏览器时带上来，浏览器直接落在面板里。
+        # 只认本机来源 —— 开了 --lan 也不能靠这条 URL 绕开密码。
+        k = (parse_qs(urlparse(self.path).query).get("k") or [""])[0]
+        if k and self.client_address[0] in ("127.0.0.1", "::1") and check_entry_token(k):
+            ck = (f"{COOKIE}={make_cookie()}; Path=/; HttpOnly; "
+                  f"SameSite=Strict; Max-Age={COOKIE_TTL}")
+            return self._send(302, b"", headers={"Location": path or "/", "Set-Cookie": ck})
         api = path.startswith("/api/")
         if not self._authed():
             return self._deny(api)

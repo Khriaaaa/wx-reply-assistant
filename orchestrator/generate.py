@@ -20,6 +20,14 @@ from pathlib import Path
 
 import yaml
 
+# 同 assistant.py：Windows 上被重定向的 stdout 按 GBK 编码，非 GBK 字符会崩
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+
 ROOT = Path(__file__).resolve().parent.parent
 # store 目录可用 WXREPLY_STORE 覆盖（只为测试和多实例；面板侧同名变量同义）。
 # 注意 main() 里 store 是拿来放 .gen.lock 的：不传 --messages 时以前引用了一个

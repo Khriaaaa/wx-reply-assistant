@@ -25,6 +25,14 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+# 同 assistant.py：Windows 上被重定向的 stdout 按 GBK 编码，非 GBK 字符会崩
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+
 HERE = Path(__file__).resolve().parent
 DEFAULT_STORE = HERE.parent / "store"
 GENERATE = HERE / "generate.py"

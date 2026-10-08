@@ -17,11 +17,12 @@
 param(
     [string]$OutDir = 'C:\dl\wxc',
     [int]$IntervalSec = 2,
-    [int]$Rounds = 0
+    [int]$Rounds = 0,
+    # 单机版会带自己那份 winapp.exe；NAS 版走老路径 C:\winapp-cli
+    [string]$Winapp = 'C:\winapp-cli\winapp.exe'
 )
 
 $ErrorActionPreference = 'Continue'
-$Winapp = 'C:\winapp-cli\winapp.exe'
 $CmdTimeoutMs = 30000
 $LogMax = 5MB
 

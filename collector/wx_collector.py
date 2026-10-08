@@ -26,8 +26,18 @@ import sys
 import time
 from datetime import datetime, timezone
 
+# 同 assistant.py：Windows 上被重定向的 stdout 按 GBK 编码，非 GBK 字符会崩
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+
 HERE = os.path.dirname(os.path.abspath(__file__))
-STORE_DIR = os.path.join(os.path.dirname(HERE), "store")
+# WXREPLY_STORE 覆盖（跟 generate/server 同义）：桌面壳把数据放在用户目录下，
+# 不往安装目录里写 —— 安装目录可能只读、重装还会被清掉
+STORE_DIR = os.environ.get("WXREPLY_STORE") or os.path.join(os.path.dirname(HERE), "store")
 MSG_FILE = os.path.join(STORE_DIR, "messages.jsonl")
 CACHE_DIR = os.path.join(STORE_DIR, "cache")
 # 虚机连接与工作目录都来自 tools/vmcfg.py（环境变量或 config.local.yaml），
@@ -37,9 +47,19 @@ import vmcfg                                     # noqa: E402
 SCRATCH = vmcfg.ensure_work()
 GA = vmcfg.GA
 PS1RUN = vmcfg.PS1RUN
+# 在哪跑：Windows 上直跑（单机版，本地 PowerShell）还是容器里（NAS 侧，经 QGA 控虚机）
+IN_VM = os.name == "nt"
 LOCAL_PS1 = os.path.join(HERE, "wx_collect.ps1")
-GUEST_DIR = "C:\\dl\\wxc"
-GUEST_PS1 = "C:\\dl\\wx_collect.ps1"
+# 工作目录按运行位置分：
+#   NAS 侧（容器里）-> guest 里的 C:\dl\wxc，老路径照旧，不动现状
+#   Windows 上直跑（单机版）-> 项目自己的 store\collect，不去 C:\dl 占地，
+#     也不会跟别处同时跑的另一份采集实例抢 heartbeat / round.json
+if IN_VM:
+    GUEST_DIR = os.path.join(STORE_DIR, "collect")
+    GUEST_PS1 = os.path.join(GUEST_DIR, "wx_collect.ps1")
+else:
+    GUEST_DIR = "C:\\dl\\wxc"
+    GUEST_PS1 = "C:\\dl\\wx_collect.ps1"
 
 # Screenshot geometry (window screenshot 896x648; UIA coords are screen pixels, so
 # screenshot_xy = uia_xy - window origin). Default origin from measurement; overridden
@@ -64,10 +84,10 @@ def utcnow():
 
 
 # ------------------------------------------------------------------ 传输层
-# 两种运行位置：容器里（靠 ga.py 经 QGA 控虚机）和虚机里（本地直跑）。
-# 虚机模式下把 PowerShell 的输出包装成 ga.py 的 out-data/exitcode 形状，
+# 两种运行位置：容器里（靠 ga.py 经 QGA 控虚机）和 Windows 上（本地直跑，单机版）。
+# Windows 模式下把 PowerShell 的输出包装成 ga.py 的 out-data/exitcode 形状，
 # 这样上面那些 re.search("out-data:...") 的解析一行都不用改。
-IN_VM = os.name == "nt"
+# 注意 IN_VM 在文件更上面就用到了（决定工作目录），所以定义提前，这里不再重复。
 
 
 def run(args, timeout=180):
@@ -114,6 +134,43 @@ else:
         return False
 
 
+# ---------------------------------------------------------------- 单机版起法
+def _winapp_path():
+    """桌面壳自带 winapp.exe 时用它的；没带就让 ps1 用默认 C:\\winapp-cli\\winapp.exe。"""
+    p = os.environ.get("WXREPLY_WINAPP") or ""
+    return p if p and os.path.exists(p) else ""
+
+
+def _sess_of(expr):
+    out = ga_ps("try { %s } catch { '' }" % expr)
+    m = re.search(r"out-data:\s*(\d+)", out)
+    return int(m.group(1)) if m else None
+
+
+def _ps_cmd_in_session(ps_args):
+    """把采集循环拉起来的那条 PowerShell 命令。
+
+    单机版：采集脚本、微信、我们自己都在同一个登录会话里 —— 直接 Start-Process。
+    虚机调试版（本进程是 SYSTEM/会话 0，微信在 session 1）：借 PsExec 注入，
+    否则窗口根本读不到。判不出来时：有 PsExec 就用，没有就直接起。
+    """
+    mine = _sess_of("(Get-Process -Id $PID).SessionId")
+    wx = _sess_of("(Get-Process Weixin,WeChat -ErrorAction SilentlyContinue | "
+                  "Select-Object -First 1).SessionId")
+    psexec = os.environ.get("WXREPLY_PSEXEC", "C:\\dl\\PsExec64.exe")
+    if wx is not None and mine is not None and wx == mine:
+        print("collector: 与微信同会话（%d），直接起" % mine)
+    elif not os.path.exists(psexec):
+        print("collector: 没找到 PsExec，直接在本会话起（微信不在本会话就采不到）")
+    else:
+        print("collector: 本进程会话 %s / 微信会话 %s，借 PsExec 注入" % (mine, wx))
+        return ("Start-Process '%s' -ArgumentList "
+                "'-accepteula','-nobanner','-i','1','-d','powershell.exe',%s"
+                % (psexec, ",".join(ps_args)))
+    return ("Start-Process powershell.exe -WindowStyle Hidden -ArgumentList @(%s)"
+            % ",".join(ps_args))
+
+
 # ---------------------------------------------------------------- guest control
 def push_and_launch(rounds):
     """把采集脚本送进 session 1（交互会话）跑起来。
@@ -132,10 +189,15 @@ def push_and_launch(rounds):
         # utf-8-sig 写出 BOM：PS 5.1 见 BOM 才按 UTF-8 读，中文选择器才不会砸坏引号
         with open(GUEST_PS1, "w", encoding="utf-8-sig") as f:
             f.write(gen)
-        ps = ("Start-Process 'C:\\dl\\PsExec64.exe' -ArgumentList "
-              "'-accepteula','-nobanner','-i','1','-d','powershell.exe',"
-              "'-NoProfile','-ExecutionPolicy','Bypass','-File','%s'" % GUEST_PS1)
-        out = ga_ps(ps)
+        # -OutDir 必须显式传：ps1 自己的默认还是 C:\dl\wxc（NAS 时代的路径），
+        # 不传就会跟老实例共用一个 OutDir，互相抢 heartbeat / collector.lock
+        ps_args = ["'-NoProfile'", "'-ExecutionPolicy'", "'Bypass'",
+                   "'-WindowStyle'", "'Hidden'",                    # 别在桌面上弹黑窗
+                   "'-File','%s'" % GUEST_PS1, "'-OutDir','%s'" % GUEST_DIR]
+        wa = _winapp_path()
+        if wa:
+            ps_args.append("'-Winapp','%s'" % wa)
+        out = ga_ps(_ps_cmd_in_session(ps_args))
         print(out.strip())
         return "exitcode: 0" in out
 
@@ -155,7 +217,11 @@ def push_and_launch(rounds):
         return False
     ps = ("Start-Process 'C:\\dl\\PsExec64.exe' -ArgumentList "
           "'-accepteula','-nobanner','-i','1','-d','powershell.exe',"
-          "'-NoProfile','-ExecutionPolicy','Bypass','-File','%s'" % GUEST_PS1)
+          # -OutDir 必须显式传：ps1 自己的默认还是 C:\dl\wxc（NAS 时代的路径），
+              # 不传就会跟老实例共用一个 OutDir，互相抢 heartbeat / collector.lock
+              "'-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden',"  # 别在桌面上弹黑窗
+              "'-File','%s','-OutDir','%s'"
+              % (GUEST_PS1, GUEST_DIR))
     out2 = ga_ps(ps)
     print(out2.strip()[-200:])
     return "exitcode: 0" in out2
