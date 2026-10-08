@@ -74,7 +74,7 @@ def main() -> None:
     if not exe.exists():
         print("找不到安装包：%s" % exe)
         sys.exit(1)
-    out = Path(sys.argv[2]) if len(sys.argv) > 2 else exe.with_name("verify-installer.bat")
+    out = Path(sys.argv[2]) if len(sys.argv) > 2 else exe.with_name("verify.bat")
     digest = sha256(exe)
     out.parent.mkdir(parents=True, exist_ok=True)
     with open(out, "w", encoding="gbk", newline="\r\n") as f:
