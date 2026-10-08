@@ -25,6 +25,9 @@ const RES = DEV ? path.resolve(__dirname, '..') : process.resourcesPath;
 const PY_ROOT = DEV ? RES : path.join(RES, 'py');
 const BUNDLED_PY = path.join(RES, 'python', 'python.exe');
 const BUNDLED_WINAPP = path.join(RES, 'winapp', 'winapp.exe');
+// 体检补下来的运行时放这（自带那份被删/被杀软清掉时的退路）
+const RUNTIME_DIR = path.join(app.getPath('userData'), 'runtime');
+const PREFLIGHT = DEV ? path.join(__dirname, 'preflight.ps1') : path.join(RES, 'preflight.ps1');
 const ICON_PNG = path.join(__dirname, 'build', 'icon.png');
 const ICON_ICO = path.join(__dirname, 'build', 'icon.ico');
 
@@ -64,6 +67,8 @@ function findPython() {
   const cands = [];
   if (env) cands.push({ cmd: env, args: [] });
   if (fs.existsSync(BUNDLED_PY)) cands.push({ cmd: BUNDLED_PY, args: [] });
+  const runtimePy = path.join(RUNTIME_DIR, 'python', 'python.exe');
+  if (fs.existsSync(runtimePy)) cands.push({ cmd: runtimePy, args: [] });
   cands.push({ cmd: 'py', args: ['-3'] });
   cands.push({ cmd: 'python', args: [] });
   cands.push({ cmd: 'C:\\Py311\\python.exe', args: [] });
@@ -81,6 +86,10 @@ function childEnv() {
     WXREPLY_STORE: path.join(app.getPath('userData'), 'store'),
   });
   if (fs.existsSync(BUNDLED_WINAPP)) env.WXREPLY_WINAPP = BUNDLED_WINAPP;
+  else {
+    const runtimeWa = path.join(RUNTIME_DIR, 'winapp', 'winapp.exe');
+    if (fs.existsSync(runtimeWa)) env.WXREPLY_WINAPP = runtimeWa;
+  }
   return env;
 }
 
@@ -154,6 +163,48 @@ function freePort() {
     const out = ((r.stdout || '') + (r.stderr || '')).trim();
     if (out) log('freePort:', out);
   } catch (e) { log('freePort 失败:', String(e)); }
+}
+
+// ---------------------------------------------------------------- 环境体检
+// 跑 preflight.ps1：不带 fix 只体检；带 fix 会顺手补齐（缺运行时就从官方源重下、
+// 微信没开就拉起来、端口被自己旧进程占着就清掉、数据目录没有就建）。
+// 返回 null = 脚本不在或没吐出 JSON（源码方式跑、或者杀软把脚本吃了），
+// 这时静默放过 —— 体检是帮忙的，不能因为它挂了就打不开面板。
+function runPreflight(fix) {
+  return new Promise((resolve) => {
+    if (!fs.existsSync(PREFLIGHT)) { log('preflight 不在，跳过:', PREFLIGHT); return resolve(null); }
+    const args = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', PREFLIGHT,
+                  '-ResDir', RES,
+                  '-DataDir', app.getPath('userData'),
+                  '-Port', String(PORT)];
+    if (fix) args.push('-Fix');
+    try {
+      const r = spawnSync('powershell.exe', args, { windowsHide: true, timeout: 240000, encoding: 'utf8' });
+      const s = r.stdout || '';
+      const i = s.indexOf('{'), j = s.lastIndexOf('}');
+      if (i >= 0 && j > i) {
+        try { return resolve(JSON.parse(s.slice(i, j + 1))); }
+        catch (e) { log('preflight JSON 解析失败:', String(e), s.slice(0, 300)); }
+      }
+      log('preflight 没输出 JSON rc=' + r.status, (r.stderr || '').slice(0, 400));
+      resolve(null);
+    } catch (e) { log('preflight 跑不起来:', String(e)); resolve(null); }
+  });
+}
+
+function reportPreflight(pf) {
+  const line = (it) => (it.state === 'ok' ? '[ok] ' : '[!!] ') + it.name + ' —— ' + it.detail;
+  log('preflight blockers=' + pf.blockers + '\n' + pf.items.map(line).join('\n') +
+      (pf.notes && pf.notes.length ? '\n备注: ' + pf.notes.join(' | ') : ''));
+  if (!pf.blockers) return;
+  const bad = pf.items.filter(i => i.state !== 'ok');
+  dialog.showMessageBox({
+    type: 'warning',
+    title: '微信回复助手 · 环境体检',
+    message: pf.blockers + ' 项要处理（其余已自动补齐）',
+    detail: bad.map(line).join('\n') + '\n\n面板照常打开，这几项不影响你先配模型。',
+    buttons: ['知道了'],
+  }).catch(() => {});
 }
 
 // ---------------------------------------------------------------- 起 / 停后端
@@ -287,6 +338,9 @@ if (!app.requestSingleInstanceLock()) {
     }
     createWindow();
     createTray();
+    // 先体检：缺什么补什么（自带运行时、微信、端口、数据目录），补不上的报给用户
+    const pf = await runPreflight(true);
+    if (pf) reportPreflight(pf);
     boot();
   });
 

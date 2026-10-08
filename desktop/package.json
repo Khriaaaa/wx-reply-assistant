@@ -1,7 +1,7 @@
 {
   "name": "wx-reply-assistant",
   "productName": "微信回复助手",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "读微信聊天，给三条候选回复 —— 只给建议，不自动发送",
   "main": "main.js",
   "author": "Khriaaaa",
@@ -79,6 +79,10 @@
         "filter": [
           "setup-windows.ps1"
         ]
+      },
+      {
+        "from": "preflight.ps1",
+        "to": "preflight.ps1"
       },
       {
         "from": "../config.example.yaml",
