@@ -145,6 +145,23 @@ def get_winapp(local_dir):
     print("vendor 就绪:", VENDOR)
 
 
+def make_python_pack():
+    """把整份运行时（python.exe + Lib\\site-packages 里的依赖）压成一个包，随安装包一起走。
+    用户机器上若自带那份被删/被杀软清掉，preflight 直接本地解这个包补回去 ——
+    不用联网、字节和自带那份一致。光下官方 embeddable 是不行的：它不带 pillow/numpy/pyyaml。"""
+    pack = os.path.join(VENDOR, "python-pack.zip")
+    if os.path.exists(pack):
+        os.remove(pack)
+    n = 0
+    with zipfile.ZipFile(pack, "w", zipfile.ZIP_DEFLATED) as z:
+        for root, _dirs, files in os.walk(PYDIR):
+            for name in files:
+                full = os.path.join(root, name)
+                z.write(full, os.path.relpath(full, PYDIR))
+                n += 1
+    print("python-pack.zip: %d 个文件, %.1f MB" % (n, os.path.getsize(pack) / 1e6))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--python", default="3.11.9", help="embeddable 版本，默认 3.11.9")
@@ -166,6 +183,9 @@ def main():
             raise SystemExit("自带 Python import 不了依赖，检查 wheels 铺的路径")
     else:
         print("（非 Windows：跳过自检，python.exe 不在这台机器上）")
+
+    # 自检过了才打包 —— 补包必须是一份能跑起来的运行时
+    make_python_pack()
 
 
 if __name__ == "__main__":

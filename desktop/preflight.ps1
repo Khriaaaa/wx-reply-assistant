@@ -131,24 +131,20 @@ if ($pyVer) {
     Add-Item 'python' '自带 Python 运行时' 'ok' ("$pyVer" + $(if ($fromRuntime) { '（补下来的那份）' } else { '' }))
 } else {
     $done = $false
+    # 用安装包自带的补包本地解 —— 官方 embeddable 裸包不带 pillow/numpy/pyyaml，
+    # 解出来面板起不来（自检会报 10061），所以这里不走网络。
     if ($Fix) {
-        $zip = Join-Path $env:TEMP 'wxreply-py.zip'
-        $pyUrls = @(
-            "https://registry.npmmirror.com/-/binary/python/$PY_VER/python-$PY_VER-embed-amd64.zip",
-            "https://mirrors.huaweicloud.com/python/$PY_VER/python-$PY_VER-embed-amd64.zip",
-            "https://www.python.org/ftp/python/$PY_VER/python-$PY_VER-embed-amd64.zip"
-        )
-        if (FetchAny $pyUrls $zip 180) {
+        $pack = Join-Path $ResDir 'python-pack.zip'
+        if (Test-Path $pack) {
             $dst = Join-Path $RuntimeDir 'python'
             if (Test-Path $dst) { Remove-Item $dst -Recurse -Force -ErrorAction SilentlyContinue }
             New-Item -ItemType Directory -Path $dst -Force | Out-Null
-            try { Expand-Archive -Path $zip -DestinationPath $dst -Force } catch { Note "解压 Python 失败 —— $($_.Exception.Message)" }
-            Remove-Item $zip -Force -ErrorAction SilentlyContinue
+            try { Expand-Archive -Path $pack -DestinationPath $dst -Force } catch { Note "解 Python 补包失败 —— $($_.Exception.Message)" }
             $v3 = Test-Py (Join-Path $dst 'python.exe')
-            if ($v3) { Add-Item 'python' '自带 Python 运行时' 'ok' "没了，已补上 $v3"; $done = $true }
-        }
+            if ($v3) { Add-Item 'python' '自带 Python 运行时' 'ok' "没了，已从本地补包还原 $v3"; $done = $true }
+        } else { Note "本地补包不在：$pack" }
     }
-    if (-not $done) { Add-Item 'python' '自带 Python 运行时' 'fail' '没找到，也没补上 —— 检查网络，或重装一遍安装包' }
+    if (-not $done) { Add-Item 'python' '自带 Python 运行时' 'fail' '没了，本地补包也不在 —— 重装一遍安装包' }
 }
 
 # ---------------------------------------------------------------- winapp（94MB，丢后台）

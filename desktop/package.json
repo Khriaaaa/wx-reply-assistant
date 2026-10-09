@@ -97,6 +97,10 @@
         "to": "python"
       },
       {
+        "from": "vendor/python-pack.zip",
+        "to": "python-pack.zip"
+      },
+      {
         "from": "vendor/winapp",
         "to": "winapp"
       }
