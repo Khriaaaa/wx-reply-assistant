@@ -19,14 +19,14 @@
 
   <text class="eb" x="60" y="72">ARCHITECTURE</text>
   <text class="ttl" x="60" y="118">一条只读的链路</text>
-  <text class="sub" x="60" y="148">从微信窗口里的气泡，到你手机上能直接复制的一句话</text>
+  <text class="sub" x="60" y="148">从微信窗口里的气泡，到一句能直接复制的话</text>
 
   <!-- 阶段卡片 -->
   <g>
     <rect x="60" y="200" width="210" height="212" rx="14" fill="#FFFFFF" stroke="#DFD3BC"/>
     <text class="n" x="84" y="234">01</text>
     <text class="h" x="84" y="268">微信窗口</text>
-    <text class="d" x="84" y="296">Win10 虚机里</text>
+    <text class="d" x="84" y="296">你的 Windows 上</text>
     <text class="d" x="84" y="316">开着的那个微信</text>
     <text class="m" x="84" y="352">UIA 只读界面树</text>
     <text class="d" x="84" y="382">不点、不发、不接管</text>
@@ -62,7 +62,7 @@
     <rect x="840" y="200" width="140" height="212" rx="14" fill="#FFF9F2" stroke="#E0C9A8"/>
     <text class="n" x="864" y="234">04</text>
     <text class="h" x="864" y="268">面板</text>
-    <text class="d" x="864" y="296">手机上看</text>
+    <text class="d" x="864" y="296">打开就看</text>
     <text class="d" x="864" y="316">复制就走</text>
     <text class="d" x="864" y="352">只给建议</text>
     <text class="d" x="864" y="372">不替你发</text>

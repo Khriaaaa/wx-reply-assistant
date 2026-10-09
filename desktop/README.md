@@ -63,7 +63,7 @@ npm start              # 开发模式直跑（用系统 Python，先设 WXREPLY_
 `preflight.ps1` 由主进程在启动时跑，排在 `findPython()` **前面** —— 补下来的那份 Python 也得能被找到。
 
 体检七项：自带 Python 运行时、自带 winapp、程序文件、微信客户端（装没装 / 开没开）、数据目录、面板端口、VC++ 运行库。
-能当场补的当场补：Python 运行时按 npmmirror → 华为云 → python.org 依序重下（秒级，实测 12.9 / 9.1 / 4.9 MB/s）；
+能当场补的当场补：Python 运行时或依赖缺失，从安装包自带的补包（`python-pack.zip`）本地还原，不联网；
 微信装了没开就拉起来；端口被自己旧进程占着就清掉；数据目录没有就建。
 
 winapp 那个 94MB **不挡启动**，丢后台子进程去下（`-DownloadOnly winapp`），补完下次启动就位。

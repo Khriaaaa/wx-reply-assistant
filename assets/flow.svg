@@ -40,7 +40,7 @@
   <!-- 03 -->
   <rect x="50" y="344" width="440" height="104" rx="13" fill="#FFFFFF" stroke="#DFD3BC"/>
   <text class="n" x="76" y="380">03</text>
-  <text class="h" x="120" y="382">增量入库</text>
+  <text class="h" x="120" y="382">记进本地</text>
   <text class="d" x="76" y="410">按指纹去重，只追加新消息</text>
   <text class="d" x="76" y="430">窗口滚动、重复读同一屏都不会写重</text>
 
@@ -49,7 +49,7 @@
   <!-- 04 -->
   <rect x="560" y="344" width="440" height="104" rx="13" fill="#FFFFFF" stroke="#DFD3BC"/>
   <text class="n" x="586" y="380">04</text>
-  <text class="h" x="630" y="382">去抖触发</text>
+  <text class="h" x="630" y="382">静默触发</text>
   <text class="d" x="586" y="410">只认对方发来的消息，静默 1.2 秒再合并生成</text>
   <text class="d" x="586" y="430">连着发三条不会生成三次</text>
 
@@ -60,7 +60,7 @@
   <text class="n" x="76" y="538">05</text>
   <text class="h" x="120" y="540">生成候选</text>
   <text class="d" x="76" y="568">三条不同策略，带紧张度与意图说明</text>
-  <text class="d" x="76" y="588">模型挂了自动降级到备用 provider</text>
+  <text class="d" x="76" y="588">主接口连不上，自动换下一个</text>
 
   <line x1="498" y1="554" x2="552" y2="554" stroke="#A99E8D" stroke-width="1.8" marker-end="url(#a2)"/>
 
