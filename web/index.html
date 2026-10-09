@@ -294,12 +294,20 @@ button.mini{padding:9px 14px;font-size:12.5px;white-space:nowrap}
   .wrap{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,.82fr);column-gap:40px;align-items:start}
   header{grid-column:1/-1}
   #panel{grid-column:1;margin-top:32px}
-  .col{grid-column:2;align-self:stretch;display:flex;flex-direction:column;min-height:0;margin-top:32px}
-  .col h3{margin-top:0}
+  .col{grid-column:2;align-self:stretch;display:flex;flex-direction:column;min-height:0;margin-top:32px;
+    /* 右栏做成下沉面板：比页面略浅、比左卡(#242424)深，气泡(surface/ctrl)压在它上面才有层次。
+       早先不做容器时消息少 → 右半边一整片裸底色，看着像没加载完 */
+    background:var(--sunken);border:1px solid var(--line);border-radius:24px;padding:20px 24px 24px}
+  /* 标题按卡片头处理（衬线 + 分隔线），跟左卡 .jvh 一套；原来是 11.5px 眉标，放进卡片里太弱 */
+  .col h3{margin:0 0 16px;padding-bottom:14px;border-bottom:1px solid var(--line);
+    font:400 17px/1.3 var(--serif);letter-spacing:.01em;color:var(--ink)}
+  .col h3 .ico{color:var(--ink-3)}
   #msgs{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding-right:6px;scrollbar-width:thin}
   /* 消息贴着输入条（像真正的聊天窗）：留白时用首元素 auto 上边距顶下去，
      不用 justify-content:flex-end —— 后者在可滚动容器里会把顶部内容裁掉。 */
   #msgs>.m:first-child,#msgs>.empty:first-child{margin-top:auto}
+  /* 底边距对齐左卡的页脚：输入条底部 ≈ 左卡页脚文字底部 */
+  #ctxbar{margin-bottom:0}
 }
 </style></head><body><div class="wrap">
 <header>
@@ -315,7 +323,7 @@ button.mini{padding:9px 14px;font-size:12.5px;white-space:nowrap}
 <div id="msgs"></div>
 <div id="ctxbar">
   <select id="ctxWho"><option value="them">对方说的</option><option value="me">我发的</option></select>
-  <textarea id="ctxText" rows="1" placeholder="补一句漏采的对话，回车加入"></textarea>
+  <textarea id="ctxText" rows="1" placeholder="补一句漏采的对话"></textarea>
   <button id="ctxAdd" class="pri">补进上下文</button>
 </div>
 </div>
