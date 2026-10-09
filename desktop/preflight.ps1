@@ -119,6 +119,16 @@ function Test-Py([string]$p) {
     return ''
 }
 
+# 解释器在 ≠ 能跑：依赖（pillow/numpy/pyyaml）没铺全时面板照样起不来（自检报 10061）。
+# 所以体检必须真的 import 一次，不能只看版本号 —— 只看版本号正是上一版漏掉裸 Python 的原因。
+function Test-PyDeps([string]$p) {
+    if (-not $p -or -not (Test-Path $p)) { return $false }
+    $o = @()
+    try { $o = & $p -c "import PIL, numpy, yaml;print('ok')" 2>&1 } catch { return $false }
+    # 逐行 trim 后精确比对，别用 -match —— 报错串里恰好带 "ok" 会假绿
+    return (($o | ForEach-Object { "$_".Trim() }) -contains 'ok')
+}
+
 $pyPath = Join-Path $ResDir 'python\python.exe'
 $pyVer  = Test-Py $pyPath
 $fromRuntime = $false
@@ -127,9 +137,13 @@ if (-not $pyVer) {
     $v2  = Test-Py $alt
     if ($v2) { $pyVer = $v2; $pyPath = $alt; $fromRuntime = $true }
 }
-if ($pyVer) {
+$pyDeps = $false
+if ($pyVer) { $pyDeps = Test-PyDeps $pyPath }
+if ($pyVer -and $pyDeps) {
     Add-Item 'python' '自带 Python 运行时' 'ok' ("$pyVer" + $(if ($fromRuntime) { '（补下来的那份）' } else { '' }))
 } else {
+    $why = '没了'
+    if ($pyVer) { $why = '依赖不全（pillow/numpy/pyyaml import 不了）' }
     $done = $false
     # 用安装包自带的补包本地解 —— 官方 embeddable 裸包不带 pillow/numpy/pyyaml，
     # 解出来面板起不来（自检会报 10061），所以这里不走网络。
@@ -140,11 +154,13 @@ if ($pyVer) {
             if (Test-Path $dst) { Remove-Item $dst -Recurse -Force -ErrorAction SilentlyContinue }
             New-Item -ItemType Directory -Path $dst -Force | Out-Null
             try { Expand-Archive -Path $pack -DestinationPath $dst -Force } catch { Note "解 Python 补包失败 —— $($_.Exception.Message)" }
-            $v3 = Test-Py (Join-Path $dst 'python.exe')
-            if ($v3) { Add-Item 'python' '自带 Python 运行时' 'ok' "没了，已从本地补包还原 $v3"; $done = $true }
+            $np = Join-Path $dst 'python.exe'
+            $v3 = Test-Py $np
+            if ($v3 -and (Test-PyDeps $np)) { Add-Item 'python' '自带 Python 运行时' 'ok' "$why，已从本地补包还原 $v3"; $done = $true }
+            elseif ($v3) { Note '补包解出来了，但依赖还是 import 不了' }
         } else { Note "本地补包不在：$pack" }
     }
-    if (-not $done) { Add-Item 'python' '自带 Python 运行时' 'fail' '没了，本地补包也不在 —— 重装一遍安装包' }
+    if (-not $done) { Add-Item 'python' '自带 Python 运行时' 'fail' "$why，本地补包也没补上 —— 重装一遍安装包" }
 }
 
 # ---------------------------------------------------------------- winapp（94MB，丢后台）
@@ -237,9 +253,14 @@ if (-not $conn) {
     Add-Item 'port' "面板端口 $Port" 'ok' '空着'
 } else {
     $owner = Get-Process -Id $conn.OwningProcess -ErrorAction SilentlyContinue
+    # 「是不是自己」只认证据：命令行指向本应用的 assistant.py，或可执行文件落在安装目录里。
+    # 不能只看进程名是 python/pythonw —— 那会把用户机器上任何占用本端口的 python 服务一起杀掉。
     $mine = $false
     if ($owner) {
-        if ($owner.ProcessName -match '^(python|pythonw)$') { $mine = $true }
+        $cmd = ''
+        try { $cmd = (Get-CimInstance Win32_Process -Filter ("ProcessId=" + $conn.OwningProcess) -ErrorAction SilentlyContinue).CommandLine } catch {}
+        if ($cmd -and $ResDir -and $cmd.ToLower().Contains($ResDir.ToLower())) { $mine = $true }
+        elseif ($cmd -and $cmd -match 'assistant\.py') { $mine = $true }
         elseif ($owner.Path -and $ResDir -and $owner.Path.ToLower().StartsWith($ResDir.ToLower())) { $mine = $true }
     }
     if ($mine -and $Fix) {

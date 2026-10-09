@@ -62,6 +62,16 @@ function probePython(cand) {
   } catch { return false; }
 }
 
+// 版本够 ≠ 能跑：面板要 PIL/numpy/yaml，缺一个都起不来（自检 10061）。
+// 只验版本号会挑中一个跑不了的运行时，所以这里真 import 一次。
+function probePythonDeps(cand) {
+  try {
+    const r = spawnSync(cand.cmd, cand.args.concat(['-c', 'import PIL, numpy, yaml']),
+      { timeout: 20000, windowsHide: true });
+    return r.status === 0;
+  } catch { return false; }
+}
+
 function findPython() {
   const env = process.env.WXREPLY_PYTHON;
   const cands = [];
@@ -72,8 +82,13 @@ function findPython() {
   cands.push({ cmd: 'py', args: ['-3'] });
   cands.push({ cmd: 'python', args: [] });
   cands.push({ cmd: 'C:\\Py311\\python.exe', args: [] });
+  // 先挑「版本够 + 依赖齐」的；一个都没有再退回只看版本（WXREPLY_PYTHON 指定的一般走这条），
+  // 并记一条日志 —— 依赖不全还硬用会以 10061 静默失败，日志里得留痕。
   for (const c of cands) {
-    if (probePython(c)) { log('python:', c.cmd, c.args.join(' ')); return c; }
+    if (probePython(c) && probePythonDeps(c)) { log('python:', c.cmd, c.args.join(' ')); return c; }
+  }
+  for (const c of cands) {
+    if (probePython(c)) { log('python(依赖不全，仍用):', c.cmd, c.args.join(' ')); return c; }
   }
   return null;
 }
