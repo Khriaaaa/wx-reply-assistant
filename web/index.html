@@ -34,8 +34,13 @@
   【暗色配套】html{color-scheme:dark} —— 不加这句原生 select / textarea / 滚动条还是白底。
     滚动条单独写了 ::-webkit-scrollbar，否则右侧一道白条很跳。
   【布局】
-    桌面 ≥980px：两栏栅格。左栏（宽）建议卡片，右栏（约 45%）聊天记录 + 手动补上下文输入条，
-      右栏消息流限高内滚；顶栏横跨两栏、sticky、底部一条 hairline；栏间距 40。
+    桌面 ≥980px：两栏栅格（grid 两列，非 template-areas），栏间距 40。左栏（宽）建议卡片，
+      右栏（约 45%）是一个 flex 纵向容器 .col：标题 → 消息流 → 手动补上下文输入条。
+      .col 用 align-self:stretch 拉齐到左卡高度，消息流 flex:1 吃剩余空间、内部滚动，
+      输入条钉在栏底；消息在留白时靠首元素 margin-top:auto 顶到底部（像真实聊天窗）。
+      ⚠️ 别退回 grid-template-areas + 跨行：左卡比右栏高时会把右栏的行一起撑开，
+        表现为标题被挤到竖直居中、输入条下方一大片空白（已修过）。
+      顶栏横跨两栏、sticky、底部一条 hairline。
     移动 <980px：单栏，顺序 顶栏 → 建议卡片 → 聊天记录 → 输入条；输入条改成
       「来源 / 文本域 / 按钮」纵向堆叠、按钮满宽；卡片内边距收窄到 18，候选卡按钮并排不换行。
 -->
@@ -148,8 +153,10 @@ button.fill{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/s
 .jvh{display:flex;align-items:baseline;gap:12px;padding:26px 24px 20px;border-bottom:1px solid var(--line)}
 .jvh b{font:400 22px/1.2 var(--serif);letter-spacing:.01em}
 .jvh .upd{margin-left:auto;font-size:11.5px;letter-spacing:.06em;color:var(--ink-3);white-space:nowrap}
-.ok{display:flex;align-items:flex-start;padding:12px 24px;font-size:13px;line-height:1.6;color:var(--clay-2);
-  background:var(--clay-soft);border-bottom:1px solid var(--clay-line)}
+/* 更新提示：早期做成满宽色带，和卡片的圆角、内边距体系打架（分隔线、引用块都是内缩的）。
+   改成内缩圆角小条，跟其它分节对齐。 */
+.ok{display:flex;align-items:flex-start;margin:16px 24px 0;padding:11px 14px;font-size:13px;line-height:1.6;color:var(--clay-2);
+  background:var(--clay-soft);border:1px solid var(--clay-line);border-radius:14px}
 .ok .ico{margin-top:2px;color:var(--clay)}
 .say{padding:24px 24px 0;font:400 11.5px/1 var(--sans);letter-spacing:.14em;color:var(--ink-3)}
 .quote{margin:10px 24px 0;padding:14px 18px;background:var(--sunken);border-left:2px solid var(--clay);
@@ -261,7 +268,7 @@ button.mini{padding:9px 14px;font-size:12.5px;white-space:nowrap}
   #sess{font-size:16px}
   .jvh{padding:22px 18px 16px}
   .jvh b{font-size:20px}
-  .ok{padding:11px 18px}
+  .ok{margin:14px 18px 0;padding:10px 13px}
   .say{padding:22px 18px 0}
   .quote{margin:10px 18px 0;font-size:16px;padding:12px 14px}
   .ttl{margin:22px 18px 8px}
@@ -281,13 +288,18 @@ button.mini{padding:9px 14px;font-size:12.5px;white-space:nowrap}
   .mrow button{flex:1 1 40%}
 }
 @media(min-width:980px){
-  .wrap{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,.82fr);
-    grid-template-areas:"hd hd" "panel head" "panel msgs" "panel ctx";column-gap:40px;align-content:start}
-  header{grid-area:hd}
-  #panel{grid-area:panel;margin-top:32px}
-  h3{grid-area:head;margin:32px 0 16px}
-  #msgs{grid-area:msgs;max-height:calc(100vh - 300px);overflow-y:auto;overscroll-behavior:contain;padding-right:6px;scrollbar-width:thin}
-  #ctxbar{grid-area:ctx}
+  /* 两栏各自独立起高：早期用 grid-template-areas 让 #panel 跨三行，
+     左侧卡片比右栏高时会把 'head'/'ctx' 两行一起撑开 —— 右栏标题被挤到竖直居中、
+     输入条下方留一大片空白。改成两列 + 右栏自己 flex 纵向排布，顶部对齐、消息区自适应。 */
+  .wrap{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,.82fr);column-gap:40px;align-items:start}
+  header{grid-column:1/-1}
+  #panel{grid-column:1;margin-top:32px}
+  .col{grid-column:2;align-self:stretch;display:flex;flex-direction:column;min-height:0;margin-top:32px}
+  .col h3{margin-top:0}
+  #msgs{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding-right:6px;scrollbar-width:thin}
+  /* 消息贴着输入条（像真正的聊天窗）：留白时用首元素 auto 上边距顶下去，
+     不用 justify-content:flex-end —— 后者在可滚动容器里会把顶部内容裁掉。 */
+  #msgs>.m:first-child,#msgs>.empty:first-child{margin-top:auto}
 }
 </style></head><body><div class="wrap">
 <header>
@@ -298,12 +310,14 @@ button.mini{padding:9px 14px;font-size:12.5px;white-space:nowrap}
   <button id="regen" class="pri">重新生成</button>
 </header>
 <div id="panel"></div>
+<div class="col">
 <h3><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"><path d="M2.6 4.6h10.8a1 1 0 0 1 1 1v5.6a1 1 0 0 1-1 1H7.2L4.2 15v-2.8H2.6a1 1 0 0 1-1-1V5.6a1 1 0 0 1 1-1z"/></svg>聊天记录</h3>
 <div id="msgs"></div>
 <div id="ctxbar">
   <select id="ctxWho"><option value="them">对方说的</option><option value="me">我发的</option></select>
   <textarea id="ctxText" rows="1" placeholder="补一句漏采的对话，回车加入"></textarea>
   <button id="ctxAdd" class="pri">补进上下文</button>
+</div>
 </div>
 </div>
 <!-- 首次打开（还没配模型接口）时自动弹这个 -->
