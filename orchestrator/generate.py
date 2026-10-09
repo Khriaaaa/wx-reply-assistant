@@ -41,7 +41,7 @@ PROMPT = ROOT / "prompts" / "reply_system.md"
 # 容器里用绝对路径；放到虚机/别的机器上跑时那个路径不存在，
 # 于是支持两种覆盖：环境变量 WXREPLY_CONFIG，或项目根下的 config.local.yaml。
 CONFIG_HINT = Path("/opt/data/config.yaml")
-# 面板「首次配置」写的就是这个文件：单独的、不进仓库的小配置，专门放模型接口凭据。
+# 面板「首次配置」写的就是这个文件：单独的、只留在本机的小配置，专门放模型接口凭据。
 # 不去改用户的 config.local.yaml —— 那里面常有自己的注释和 vm 段，整段重写会把注释吃掉。
 # 默认跟 STORE 走（WXREPLY_STORE 覆盖 Finding 时一起挪）：不然面板把 .llm.yaml
 # 写进覆盖的 store，generate 却回根 store 去找 —— 面板说已配置、生成说没 provider，

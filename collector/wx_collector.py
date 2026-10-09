@@ -41,7 +41,7 @@ STORE_DIR = os.environ.get("WXREPLY_STORE") or os.path.join(os.path.dirname(HERE
 MSG_FILE = os.path.join(STORE_DIR, "messages.jsonl")
 CACHE_DIR = os.path.join(STORE_DIR, "cache")
 # 虚机连接与工作目录都来自 tools/vmcfg.py（环境变量或 config.local.yaml），
-# 仓库里不写死主机/口令/UUID。默认用项目自带的 tools/ga.py、tools/ps1run.py。
+# 代码里不写死主机/口令/UUID。默认用项目自带的 tools/ga.py、tools/ps1run.py。
 sys.path.insert(0, os.path.join(os.path.dirname(HERE), "tools"))
 import vmcfg                                     # noqa: E402
 SCRATCH = vmcfg.ensure_work()

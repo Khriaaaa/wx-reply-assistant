@@ -38,7 +38,7 @@ https://github.com/Khriaaaa/wx-reply-assistant/releases/latest/download/wx-reply
 | 部分 | 跑在哪 | 干什么 |
 | --- | --- | --- |
 | 微信 + 采集脚本 | 一台 Windows（虚拟机或实体机） | 读屏，把当前会话写成一圈快照 |
-| 采集器 / 编排 / 面板 | 一台 Linux（这里是 NAS） | 拉取、入库、调模型、出网页 |
+| 采集器 / 编排 / 面板 | 一台 Linux（这里是 NAS） | 收消息、调模型、出网页 |
 | 模型端点 | 网络的另一头 | 只看「最近若干条」，回三条候选 |
 
 数据是单向的：Windows 那侧只被读，不接收任何写入。填入通道默认关闭，见 README 的「边界」。
@@ -204,7 +204,7 @@ vm:
 不想写文件也可以用环境变量，优先级更高：`WXREPLY_SSH`、`WXREPLY_SSH_PW`、
 `WXREPLY_QGA_UUID`、`WXREPLY_WORK`。
 
-`config.local.yaml` 已经在 `.gitignore` 里，不会被推到任何地方。
+`config.local.yaml` 已经在 `.gitignore` 里，只留在你这台机器上，不会被传到任何地方。
 
 ## 6 接模型
 

@@ -10,7 +10,7 @@
 给「有几句对话发生在采集器看不到的地方」用 —— 补进去的行和采集行同结构，下轮生成直接吃到。
 /api/setup 是「首次配置」：网页上挑一家厂商（预置国内主流厂商的 OpenAI 兼容地址，
 见 orchestrator/providers_cn.py）、填 Key、填模型，服务端真连一次测通再落盘。
-Key 存在 store/.llm.yaml（0600，不进仓库）里，接口只回显尾四位，绝不回传明文。
+Key 存在 store/.llm.yaml（0600，只留在本机）里，接口只回显尾四位，绝不回传明文。
 /api/fill 把某条候选填进 NAS 虚机里微信的输入框（只填不发送，见 ../tools/fill_vm.py）。
 **默认关闭**：目标就是「只给建议、不替你回」。要开就设环境变量 HERMES_PANEL_ALLOW_FILL=1
 或放一个 store/.allow_fill 文件，重启即生效；关闭时接口一律 403。
@@ -85,7 +85,7 @@ def log_raw(where, r):
 
 PW_FILE = STORE / ".panel_password"
 SECRET_FILE = STORE / ".panel_secret"
-# 「首次配置」写到这里：单独的 0600 私密文件，不进仓库、也不动用户的 config.local.yaml
+# 「首次配置」写到这里：单独的 0600 私密文件、只留在本机，不动用户的 config.local.yaml
 LLM_CFG = Path(os.environ.get("WXREPLY_LLM_CONFIG", str(STORE / ".llm.yaml")))
 COOKIE = "panel_session"
 COOKIE_TTL = 7 * 86400
@@ -696,7 +696,7 @@ def save_llm_cfg(base, key, model, entry_name=LLM_ENTRY):
     cfg["model"] = m
     tmp = LLM_CFG.with_name(LLM_CFG.name + ".tmp")
     with open(tmp, "w", encoding="utf-8") as f:
-        f.write("# 面板「首次配置」写的模型接口凭据 —— 属于本机私密文件，不进仓库\n")
+        f.write("# 面板「首次配置」写的模型接口凭据 —— 属于本机私密文件，不外传\n")
         f.write(yaml.safe_dump(cfg, allow_unicode=True, sort_keys=False, default_flow_style=False))
     os.chmod(tmp, 0o600)
     os.replace(tmp, LLM_CFG)

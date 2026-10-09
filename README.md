@@ -56,13 +56,13 @@
 </div>
 
 ```
-collector/     读屏与入库（PowerShell 跑在虚机里 + Python 解析）
+collector/     读屏与记进本地文件（PowerShell 跑在虚机里 + Python 解析）
 orchestrator/  触发、拼上下文、调模型、校验
 prompts/       系统提示词与返回结构
 web/           面板（标准库 http.server，带密码）
 tools/         虚机连接、演示数据、填入通道
 docs/          工程笔记
-store/         运行期数据（聊天记录、建议、截图）—— 不进仓库
+store/         运行期数据（聊天记录、建议、截图）—— 只留在本机，不外传
 ```
 
 采集器和编排层都能单独跑：虚机里是纯 PowerShell，编排层是纯标准库 Python，
@@ -98,7 +98,7 @@ store/         运行期数据（聊天记录、建议、截图）—— 不进�
 #    下载 https://github.com/Khriaaaa/wx-reply-assistant/releases/latest/download/wxreply-setup.exe
 #    没带这个文件的话，源码在 scripts/setup-windows.ps1，打包法在 scripts/build-exe.ps1
 
-# 1. 虚机连接参数（不进仓库）
+# 1. 虚机连接参数（只写在本地这份配置里，不外传）
 cp config.example.yaml config.local.yaml   # 填 ssh / qga_uuid
 
 # 2. 面板与生成用的模型：需要一个 OpenAI 兼容的 /chat/completions 端点
