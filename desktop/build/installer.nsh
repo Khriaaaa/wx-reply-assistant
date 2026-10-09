@@ -1,32 +1,68 @@
-﻿; customUnInstall —— 卸载前把这套应用的所有进程收干净，再让 NSIS 删文件。
+﻿; customUnInstall —— 卸载时把这套应用收干净：先收进程，再补删程序目录，最后按需清数据。
 ;
-; 一开始的写法是「宏里直接杀一轮 powershell」，实测失败：面板自检（checker_loop
-; 每 30s 一次 wx_collector check）会按心跳/锁把采集循环重新拉起，杀掉的和重新
-; 拉起的在赛跑，等 2.5s 根本不够，RMDir 对被占文件静默失败，目录清不掉。
+; 这套流程是踩坑踩出来的，几件事记在这（别回退）：
+;   1. electron-builder 模板的卸载顺序是「先删 $INSTDIR → 删数据 → 最后才轮到本宏」，
+;      它删文件时，采集/面板那串 python/powershell 子进程往往还活着（DETACHED 子进程
+;      不随 Electron 退出），python.exe 被占用删不掉 —— 表现就是「卸载 exit=0，
+;      程序目录和一堆文件还在」。
+;   2. 杀进程必须用「脚本文件 + powershell -File」两步走：实测 nsExec 里直接
+;      -Command "..."（含 \" 变体）在本环境 rc=1 什么都不执行（micro-test tmicro2）。
+;      独立 .ps1 写进 $TEMP 再 -File 执行是唯一可靠写法（tmicro3 真杀假目标通过）。
+;   3. 收进程的匹配 = 进程名限定 python/pythonw/powershell/winapp + 命令行含
+;      wx-reply-assistant。新版安装器叫 wx-reply-assistant-setup.exe，不在名单里，
+;      升级时不会被误杀。连续两轮查到 0 才算干净，最多 30 轮（约 35 秒）。
+;   4. 收完进程先 SetOutPath $TEMP 再 RMDir /r $INSTDIR 补一刀 —— 不换当前目录，
+;      $INSTDIR 最后一层会因为「是工作目录」删不掉（留个空壳）。
+;   5. 数据目录（%APPDATA%\wx-reply-assistant：聊天记录、面板密码、模型 Key）：
+;        真卸载（无参数）                          → 删掉，卸载即无痕
+;        升级覆盖装（--updated 或 /KEEP_APP_DATA） → 保留
+;        显式 --delete-app-data                    → 无论如何都删
+;      升级判断不能省：覆盖安装时新版安装器会先跑旧卸载器，误删就丢用户数据了。
 ;
-; 现在分三步：
-;   1. 跑 assistant.py shutdown —— 它先 down（收 watch/sync/panel/采集），然后
-;      最多 60s 循环核对「命令行含 wx-reply-assistant 的进程」连续两轮为 0，
-;      等稳了才退出（panel 被停后就没有自检线程再拉采集了）。
-;      注意代码与数据的固定关系：代码装在 $INSTDIR\resources\py（打包时在
-;      package.json 里定的），数据在 %APPDATA%\wx-reply-assistant（main.js
-;      setPath('userData') 定的）。宏要拼的是两个根：
-;        python.exe -> "$INSTDIR\resources\python\python.exe"
-;        assistant.py -> "$INSTDIR\resources\py\assistant.py"
-;      不要用 $APPDATA 拼 py 路径 —— 那是数据目录，卸载完成时就没了。
-;      shutdown 收进程时会把自己（安装目录里的 python.exe）也列出来，它内部
-;      排除了查询 powershell 自身；宏里不需要再杀一遍。
-;   2. 等 shutdown 退出后再 Sleep 1500ms 收尾（锁文件清理、句柄释放）。
-;   3. 之后 NSIS 自己的 RMDir /r 就不会再撞被占文件。
-;
-; NSIS 把 $ 当变量起始符，PowerShell 的 $_ 必须写成 $$_（warning 6000 会被当
-; error 拒掉整个构建）。FileOpen/FileWrite 那四行是「宏真的跑了」的标记文件，
-; 留着便于以后验证，上线前可删。
+; NSIS 转义（都是血泪）：FileWrite 行里 $ 写 $$、单引号原样；nsExec 里双引号原样。
+; 构建开了 -WX，warning 6000 会直接打回；改完必须 rebuild 验证。
+
 !macro customUnInstall
-  nsExec::ExecToLog '"$INSTDIR\resources\python\python.exe" "$INSTDIR\resources\py\assistant.py" shutdown'
+  ; ① 杀进程脚本写进 $TEMP（多行 FileWrite）
+  FileOpen $9 "$TEMP\wx-uni-cleanup.ps1" w
+  FileWrite $9 "$$me = $$PID$\r$\n"
+  FileWrite $9 "$$ns = @('python.exe','pythonw.exe','powershell.exe','winapp.exe')$\r$\n"
+  FileWrite $9 "$$i = 0$\r$\n"
+  FileWrite $9 "while($$i -lt 30){$\r$\n"
+  FileWrite $9 "  $$p = @(Get-CimInstance Win32_Process | Where-Object { $$_.ProcessId -ne $$me -and $$ns -contains $$_.Name -and $$_.CommandLine -like '*wx-reply-assistant*' })$\r$\n"
+  FileWrite $9 "  if($$p.Count -eq 0){$\r$\n"
+  FileWrite $9 "    Start-Sleep -Milliseconds 1200$\r$\n"
+  FileWrite $9 "    $$p = @(Get-CimInstance Win32_Process | Where-Object { $$_.ProcessId -ne $$me -and $$ns -contains $$_.Name -and $$_.CommandLine -like '*wx-reply-assistant*' })$\r$\n"
+  FileWrite $9 "    if($$p.Count -eq 0){ break }$\r$\n"
+  FileWrite $9 "  }$\r$\n"
+  FileWrite $9 "  foreach($$q in $$p){ Stop-Process -Id $$q.ProcessId -Force -ErrorAction SilentlyContinue }$\r$\n"
+  FileWrite $9 "  Start-Sleep -Milliseconds 900$\r$\n"
+  FileWrite $9 "  $$i++$\r$\n"
+  FileWrite $9 "}$\r$\n"
+  FileClose $9
+  ; ② 执行：循环收进程，连续两轮干净才退出（最多约 35s）
+  nsExec::ExecToLog 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$TEMP\wx-uni-cleanup.ps1"'
   Pop $0
-  Sleep 1500
-  FileOpen $0 "C:\dl\wxrun\uninstall_macro_fired.txt" w
-  FileWrite $0 "fired"
-  FileClose $0
+  Delete "$TEMP\wx-uni-cleanup.ps1"
+  Sleep 800
+  ; ③ 换当前目录，补删程序目录（前面模板删过一轮，撞到被占文件的那部分这次补上）
+  SetOutPath "$TEMP"
+  RMDir /r "$INSTDIR"
+  ; ④ 数据目录：真卸载才清；升级保留；--delete-app-data 强制清
+  ClearErrors
+  ${GetParameters} $R0
+  ${GetOptions} $R0 "--delete-app-data" $R1
+  ${If} ${Errors}
+    ${GetOptions} $R0 "--updated" $R2
+    ${If} ${Errors}
+      ${GetOptions} $R0 "/KEEP_APP_DATA" $R3
+      ${If} ${Errors}
+        RMDir /r "$APPDATA\wx-reply-assistant"
+        RMDir /r "$LOCALAPPDATA\wx-reply-assistant"
+      ${EndIf}
+    ${EndIf}
+  ${Else}
+    RMDir /r "$APPDATA\wx-reply-assistant"
+    RMDir /r "$LOCALAPPDATA\wx-reply-assistant"
+  ${EndIf}
 !macroend
