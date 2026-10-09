@@ -265,6 +265,75 @@ def cmd_down(a):
     return 0
 
 
+def cmd_shutdown(a):
+    """卸载专用：全停 + 确认进程真的不再冒头。
+
+    down 有个卸载场景下致命的盲区：它只按 .assistant_pids.json 收进程，但
+    watch/panel 用 DETACHED_PROCESS 起的子进程（generate、自检拉起的采集）
+    不在表里；采集 powershell 又会被 check 自检线程按 心跳/锁 重新拉起。
+    于是「杀掉的和重新拉起的在赛跑」，卸载器跟着删文件就撞上被占的 exe/dll。
+    这里在 down 的基础上**循环核对**：最多 60 秒，每 3 秒枚举一次命令行含
+    wx-reply-assistant 的进程，连着两轮都是 0 才交还（最后一轮兜底强杀）。
+    """
+    print("=== assistant.py shutdown ===")
+    cmd_down(a)
+    clean_rounds = 0
+    last = -1
+    deadline = time.time() + 60
+    while time.time() < deadline:
+        mine = []
+        try:
+            out = subprocess.run(
+                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
+                 "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like "
+                 "'*wx-reply-assistant*' } | ForEach-Object { \"$($_.ProcessId)|$($_.Name)\" }"],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=30)
+            for line in (out.stdout or "").splitlines():
+                line = line.strip()
+                if "|" in line and line.split("|", 1)[0].isdigit():
+                    mine.append(line)
+        except Exception as e:
+            print(f"  进程枚举失败: {e}")
+            time.sleep(3)
+            continue
+        # 这条查询自己的 powershell 命令行也含关键字，会把自己也列进来 ——
+        # 在兜底强杀的 PS 里用 $me=$PID 排除查询进程本身（Name 过滤 powershell.exe
+        # 已经把普通查询排掉了，这里只是日志更准）
+        last = len(mine)
+        if mine:
+            print("  还有 %d 个相关进程在冒头:" % len(mine))
+            for m in mine[:6]:
+                print("    " + m.replace("|", " ", 1))
+            # 兜底强杀：这些命令行都指向我们自己的进程树/采集循环
+            # 但绝不能误杀我们自己 —— 收进程时跳过我的 PID 和我的父链不现实，
+            # 干脆先记下改名：把查询 powershell 排除掉再下手
+            try:
+                out = subprocess.run(
+                    ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
+                     "$me=$PID; Get-CimInstance Win32_Process | Where-Object { $_.CommandLine "
+                     "-like '*wx-reply-assistant*' -and $_.ProcessId -ne $me -and "
+                     "$_.Name -ne 'powershell.exe' } | "
+                     "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"],
+                    capture_output=True, timeout=30)
+            except Exception:
+                pass
+            time.sleep(3)
+            continue
+        if last == 0 and clean_rounds >= 1:
+            print("  连续两轮无相关进程，稳了")
+            break
+        else:
+            clean_rounds += 1
+            time.sleep(3)
+    else:
+        print("  ⚠️ 60 秒内没有稳定下来（最后一轮 %d 个）—— 卸载器会自己再兜底" % last)
+    # 收掉 pids 表，别让下次 up 读到死 PID
+    if PIDS.exists():
+        PIDS.unlink()
+    return 0
+
+
 def cmd_status(a):
     pids = load_pids()
     if not pids:
@@ -314,6 +383,7 @@ def main():
     ur = sub.add_parser("url", help="打印带进门票的面板地址（图省事时手动开）")
     ur.add_argument("--port", type=int, default=8801)
     dn = sub.add_parser("down", help="全停")
+    sub.add_parser("shutdown", help="全停并确认进程不再冒头（卸载器调用）")
     st = sub.add_parser("status", help="看状态")
     st.add_argument("--port", type=int, default=8801)
     a = ap.parse_args()
@@ -324,6 +394,8 @@ def main():
         sys.exit(0)
     if a.cmd == "down":
         sys.exit(cmd_down(a))
+    if a.cmd == "shutdown":
+        sys.exit(cmd_shutdown(a))
     sys.exit(cmd_status(a))
 
 
